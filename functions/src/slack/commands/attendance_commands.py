@@ -21,9 +21,9 @@ class AttendanceCommands:
         """個別のコマンドを登録"""
         self.app.command(command)(handler)
 
-    async def _handle_punch_in(self, ack, command, say):
+    def _handle_punch_in(self, ack, command, say):
         """出勤コマンドの処理"""
-        await ack()
+        ack()
         
         success, message, time = self.attendance_service.punch_in(
             user_id=command["user_id"],
@@ -38,15 +38,14 @@ class AttendanceCommands:
         else:
             blocks = MessageBuilder.create_error_message(message)
 
-        # チャンネル全体に表示
-        await say(
+        say(
             blocks=blocks,
             channel=command["channel_id"]
         )
 
-    async def _handle_punch_out(self, ack, command, say):
+    def _handle_punch_out(self, ack, command, say):
         """退勤コマンドの処理"""
-        await ack()
+        ack()
         
         success, message, attendance = self.attendance_service.punch_out(
             user_id=command["user_id"]
@@ -62,15 +61,14 @@ class AttendanceCommands:
         else:
             blocks = MessageBuilder.create_error_message(message)
 
-        # チャンネル全体に表示
-        await say(
+        say(
             blocks=blocks,
             channel=command["channel_id"]
         )
 
-    async def _handle_break_begin(self, ack, command, say):
+    def _handle_break_begin(self, ack, command, say):
         """休憩開始コマンドの処理"""
-        await ack()
+        ack()
         
         success, message, time = self.attendance_service.start_break(
             user_id=command["user_id"]
@@ -84,15 +82,14 @@ class AttendanceCommands:
         else:
             blocks = MessageBuilder.create_error_message(message)
 
-        # チャンネル全体に表示
-        await say(
+        say(
             blocks=blocks,
             channel=command["channel_id"]
         )
 
-    async def _handle_break_end(self, ack, command, say):
+    def _handle_break_end(self, ack, command, say):
         """休憩終了コマンドの処理"""
-        await ack()
+        ack()
         
         success, message, result = self.attendance_service.end_break(
             user_id=command["user_id"]
@@ -108,8 +105,7 @@ class AttendanceCommands:
         else:
             blocks = MessageBuilder.create_error_message(message)
 
-        # チャンネル全体に表示
-        await say(
+        say(
             blocks=blocks,
             channel=command["channel_id"]
         )

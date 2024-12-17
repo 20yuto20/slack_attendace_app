@@ -2,13 +2,12 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 from slack_bolt import App
-from slack_bolt.async_app import AsyncApp
 
 from ...services.monthly_summary_service import MonthlySummaryService
 from ..message_builder import MessageBuilder
 
 class SummaryCommands:
-    def __init__(self, app: AsyncApp, summary_service: MonthlySummaryService):
+    def __init__(self, app: App, summary_service: MonthlySummaryService):
         self.app = app
         self.summary_service = summary_service
         self._register_commands()
@@ -19,21 +18,22 @@ class SummaryCommands:
         self.app.action("select_month")(self._handle_month_selection)
         self.app.action("download_csv")(self._handle_csv_download)
 
-    async def _handle_summary(self, ack, body, say):
+    def _handle_summary(self, ack, body, say):
         """サマリーコマンドの処理"""
-        await ack()
+        ack()
         
         current_date = datetime.now()
+        # 月選択用のブロックを生成するメソッドを呼び出し
         blocks = self._create_month_selector_blocks(current_date.year)
         
-        await say(
+        say(
             blocks=blocks,
             channel=body["channel_id"]
         )
 
-    async def _handle_month_selection(self, ack, body, say):
+    def _handle_month_selection(self, ack, body, say):
         """月選択の処理"""
-        await ack()
+        ack()
         
         selected_value = body["actions"][0]["selected_option"]["value"]
         year, month = map(int, selected_value.split("-"))
@@ -49,20 +49,18 @@ class SummaryCommands:
             summary=summary
         )
         
-        await say(
+        say(
             blocks=blocks,
             channel=body["channel"]["id"]
         )
 
-    async def _handle_csv_download(self, ack, body, client):
+    def _handle_csv_download(self, ack, body, client):
         """CSVダウンロードの処理"""
-        await ack()
+        ack()
     
-        # 選択された年月を取得
         year_month = body["actions"][0]["value"]
         year, month = map(int, year_month.split("-"))
     
-        # CSVを生成
         filename, csv_content = self.summary_service.generate_csv(
             user_id=body["user"]["id"],
             user_name=body["user"]["name"],
@@ -71,8 +69,7 @@ class SummaryCommands:
         )
     
         try:
-            # files_upload_v2を使用してファイルをアップロード
-            response = await client.files_upload_v2(
+            response = client.files_upload_v2(
                 channel=body["channel"]["id"],
                 filename=filename,
                 content=csv_content,
@@ -81,51 +78,47 @@ class SummaryCommands:
             )
         
             if not response["ok"]:
-                # エラーメッセージを表示
-                await client.chat_postMessage(
+                client.chat_postMessage(
                     channel=body["channel"]["id"],
                     text=f"CSVファイルのアップロードに失敗しました：{response.get('error', '不明なエラー')}"
                 )
         except Exception as e:
-            # エラーメッセージを表示
-            await client.chat_postMessage(
+            client.chat_postMessage(
                 channel=body["channel"]["id"],
                 text=f"CSVファイルのアップロードに失敗しました：{str(e)}"
             )
 
     def _create_month_selector_blocks(self, year: int) -> List[Dict[str, Any]]:
-        """月選択用のブロックを作成"""
-        months = []
-        for month in range(1, 13):
-            months.append({
+        """
+        指定された年に対して、1月から12月までを選択できる
+        static_select形式のブロックを返すメソッド。
+        """
+        options = []
+        for m in range(1, 13):
+            options.append({
                 "text": {
                     "type": "plain_text",
-                    "text": f"{year}年{month}月"
+                    "text": f"{m}月"
                 },
-                "value": f"{year}-{month}"
+                "value": f"{year}-{m}"
             })
-
-        return [
+        
+        blocks = [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "📊 *勤怠サマリー*\n確認したい月を選択してください。"
+                    "text": f"{year}年の月を選択してください"
+                },
+                "accessory": {
+                    "type": "static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "月を選択"
+                    },
+                    "options": options,
+                    "action_id": "select_month"
                 }
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "static_select",
-                        "placeholder": {
-                            "type": "plain_text",
-                            "text": "月を選択",
-                            "emoji": True
-                        },
-                        "options": months,
-                        "action_id": "select_month"
-                    }
-                ]
             }
         ]
+        return blocks

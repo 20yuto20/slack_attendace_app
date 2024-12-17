@@ -29,10 +29,12 @@ def init_config() -> Any:
             "bot_token": os.getenv("SLACK_BOT_TOKEN"),
             "signing_secret": os.getenv("SLACK_SIGNING_SECRET"),
             "app_token": os.getenv("SLACK_APP_TOKEN"),
+            "client_id": os.getenv("SLACK_CLIENT_ID"),
+            "client_secret": os.getenv("SLACK_CLIENT_SECRET")
         },
         "firebase": {
-            "project_id": os.getenv("FIREBASE_PROJECT_ID"),
-            "credentials_path": os.getenv("FIREBASE_CREDENTIALS_PATH"),
+            "project_id": os.getenv("APP_FIREBASE_PROJECT_ID"),
+            "credentials_path": os.getenv("APP_FIREBASE_CREDENTIALS_PATH"),
         }
     })
     

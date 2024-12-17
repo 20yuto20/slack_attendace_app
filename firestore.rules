@@ -1,19 +1,38 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // attendance コレクションのルール
+    // 勤怠記録のルール
     match /attendance/{document} {
-      // 認証されたユーザーのみ読み書き可能
       allow read, write: if request.auth != null;
       
       // 月次データ取得のための複数ドキュメント読み取り許可
-      // start_timeに基づくクエリを許可
       allow list: if request.auth != null 
-        && request.query.limit <= 1000  // 1000件までの制限
-        && request.query.orderBy == "start_time";  // start_timeでの並び替えを許可
+        && request.query.limit <= 1000
+        && request.query.orderBy == "start_time";
     }
 
-    // デフォルトルール - 明示的に許可されていないアクセスを拒否
+    // Slackインストール情報のルール
+    match /slack_installations/{installationId} {
+      // Cloud Functions からのみアクセス可能
+      allow read, write: if request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.firebase.sign_in_provider == 'service_account';
+    }
+
+    // Slackボット情報のルール
+    match /slack_bots/{botId} {
+      // Cloud Functions からのみアクセス可能
+      allow read, write: if request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.firebase.sign_in_provider == 'service_account';
+    }
+
+    // OAuth状態管理のルール
+    match /slack_oauth_states/{stateId} {
+      // Cloud Functions からのみアクセス可能
+      allow read, write: if request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.firebase.sign_in_provider == 'service_account';
+    }
+
+    // デフォルトルール
     match /{document=**} {
       allow read, write: if false;
     }

@@ -5,3 +5,6 @@ config/firebase-credentials.json
 .env
 __pycache__
 *.pyc
+*venv
+data/installations/
+data/states/

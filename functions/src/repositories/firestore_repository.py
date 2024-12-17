@@ -9,12 +9,18 @@ from src.utils.time_utils import get_current_time
 
 class FirestoreRepository:
     def __init__(self, project_id: str, credentials_path: str):
-        cred = credentials.Certificate(credentials_path)
-        firebase_admin.initialize_app(cred, {
-            'projectId': project_id,
-        })
-        self.db = firestore.client()
-        self.attendance_collection = self.db.collection('attendance')
+        try:
+            cred = credentials.Certificate(credentials_path)
+            # アプリが初期化されていない場合のみ初期化
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app(cred, {
+                    'projectId': project_id,
+                })
+            self.db = firestore.client()
+            self.attendance_collection = self.db.collection('attendance')
+        except Exception as e:
+            print(f"Firebase initialization error: {str(e)}")
+            raise
 
     def create_attendance(self, attendance: Attendance) -> None:
         """新しい勤怠記録を作成"""

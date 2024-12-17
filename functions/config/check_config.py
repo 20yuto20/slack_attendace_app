@@ -1,20 +1,15 @@
 #!/usr/bin/env python
-# src/cli/check_config.py
 
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
-import logging
+from typing import List
 from dataclasses import dataclass
 from colorama import init, Fore, Style
-from dotenv import load_dotenv  # dotenvをインポート
+from dotenv import load_dotenv
 
 # カラー出力の初期化
 init()
-
-# .envファイルを読み込む
-load_dotenv()  # この行を追加
 
 @dataclass
 class ConfigCheckResult:
@@ -25,22 +20,16 @@ class ConfigCheckResult:
     
     def get_status_color(self) -> str:
         if self.exists:
-            if self.is_file_exists is None:
+            if self.is_file_exists is None or self.is_file_exists:
                 return Fore.GREEN
-            elif self.is_file_exists:
-                return Fore.GREEN
-            else:
-                return Fore.RED
+            return Fore.RED
         return Fore.RED
 
     def get_status_symbol(self) -> str:
         if self.exists:
-            if self.is_file_exists is None:
+            if self.is_file_exists is None or self.is_file_exists:
                 return "✓"
-            elif self.is_file_exists:
-                return "✓"
-            else:
-                return "×"
+            return "×"
         return "×"
 
 def check_env_vars() -> List[ConfigCheckResult]:
@@ -48,9 +37,10 @@ def check_env_vars() -> List[ConfigCheckResult]:
     required_vars = {
         "SLACK_BOT_TOKEN": "Slackボットトークン",
         "SLACK_SIGNING_SECRET": "Slack署名シークレット",
-        "SLACK_APP_TOKEN": "Slackアプリトークン",
-        "FIREBASE_PROJECT_ID": "Firebaseプロジェクトのプロジェクトid",
-        "FIREBASE_CREDENTIALS_PATH": "Firebase認証情報ファイルのパス"
+        "SLACK_CLIENT_ID": "SlackクライアントID",
+        "SLACK_CLIENT_SECRET": "Slackクライアントシークレット",
+        "APP_FIREBASE_PROJECT_ID": "Firebaseプロジェクトのプロジェクトid",
+        "APP_FIREBASE_CREDENTIALS_PATH": "Firebase認証情報ファイルのパス"
     }
     
     results = []
@@ -61,7 +51,7 @@ def check_env_vars() -> List[ConfigCheckResult]:
         
         # Firebase認証情報ファイルの場合は、ファイルの存在もチェック
         is_file_exists = None
-        if var == "FIREBASE_CREDENTIALS_PATH" and exists:
+        if var == "APP_FIREBASE_CREDENTIALS_PATH" and exists:
             is_file_exists = Path(value).exists()
         
         results.append(ConfigCheckResult(
@@ -76,14 +66,8 @@ def check_env_vars() -> List[ConfigCheckResult]:
 def main():
     """メイン処理"""
     try:
-        # 現在のパスを表示
-        print(f"{Fore.CYAN}現在の作業ディレクトリ:{Style.RESET_ALL} {os.getcwd()}")
-        print(f"{Fore.CYAN}.envファイルの場所:{Style.RESET_ALL} {os.path.join(os.getcwd(), '.env')}")
-        
-        # .envファイルの存在チェックを追加
-        env_path = Path(os.getcwd()) / '.env'
-        if not env_path.exists():
-            print(f"\n{Fore.RED}Warning: .envファイルが見つかりません{Style.RESET_ALL}")
+        # .envファイルを読み込む
+        load_dotenv()
         
         print("\n=== 環境変数チェック ===\n")
         
