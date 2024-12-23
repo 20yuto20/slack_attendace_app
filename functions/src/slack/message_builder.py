@@ -21,10 +21,13 @@ class MessageBuilder:
         """出勤メッセージを作成"""
         return [
             {
+                "type": "divider"
+            },
+            {
                 "type": "header",
                 "text": {
                     "type": "plain_text",
-                    "text": "🏃 出勤記録",
+                    "text": "☀️ 出勤記録",
                     "emoji": True
                 }
             },
@@ -60,7 +63,7 @@ class MessageBuilder:
                 "type": "header",
                 "text": {
                     "type": "plain_text",
-                    "text": "🏃‍♂️ 退勤記録",
+                    "text": "🌙 退勤記録",
                     "emoji": True
                 }
             },
@@ -145,7 +148,7 @@ class MessageBuilder:
                 "type": "header",
                 "text": {
                     "type": "plain_text",
-                    "text": "⏰ 休憩終了",
+                    "text": "🔙 休憩終了",
                     "emoji": True
                 }
             },
