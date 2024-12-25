@@ -52,7 +52,14 @@ class MonthlySummaryService:
             'year': year,
             'month': month
         }
-
+    
+    def _format_time_to_hours_and_minutes(self, minutes: float) -> str:
+        hours = int(minutes // 60)
+        mins = int(minutes % 60)
+        if hours > 0:
+            return f"{hours}時間{mins}分"
+        return f"{mins}分"
+    
     def generate_csv(self, user_id: str, user_name: str, year: int, month: int) -> Tuple[str, str]:
         """月次サマリーのCSVを生成"""
         summary = self.get_monthly_summary(user_id, year, month)
@@ -77,8 +84,8 @@ class MonthlySummaryService:
             writer.writerow([
                 date.strftime('%Y-%m-%d'),
                 date.strftime('%A'),
-                f"{record['working_time']:.2f}",
-                f"{record['break_time']:.2f}",
+                self._format_time_to_hours_and_minutes(record['working_time']),
+                self._format_time_to_hours_and_minutes(record['break_time']),
                 record['week_number']
             ])
         
@@ -86,10 +93,10 @@ class MonthlySummaryService:
         writer.writerow([])
         writer.writerow(['週次サマリー'])
         for week, total in summary['weekly_totals'].items():
-            writer.writerow([f'第{week}週', f'{total:.2f}'])
+            writer.writerow([f'第{week}週', self._format_time_to_hours_and_minutes(total)])
         
         # 月次合計を書き込み
         writer.writerow([])
-        writer.writerow(['月間合計勤務時間', f"{summary['total_working_time']:.2f}"])
+        writer.writerow(['月間合計勤務時間', self._format_time_to_hours_and_minutes(summary['total_working_time'])])
         
         return filename, output.getvalue()

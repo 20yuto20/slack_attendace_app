@@ -13,6 +13,7 @@ from src.slack.commands.summary_commands import SummaryCommands
 from src.slack.oauth import setup_oauth_flow
 from src.repositories.firestore_repository import FirestoreRepository
 from src.config import get_config
+from src.slack.events import handle_bot_invited_to_channel, handle_mention_help
 
 def create_slack_bot_function(request: Request) -> Response:
     """Create and return the Slack bot function"""
@@ -44,6 +45,10 @@ def create_slack_bot_function(request: Request) -> Response:
         # Register commands
         AttendanceCommands(app, attendance_service)
         SummaryCommands(app, monthly_summary_service)
+
+        # Register events
+        app.event("member_joined_channel")(handle_bot_invited_to_channel)
+        app.event("app_mention")(handle_mention_help)
         
         # Initialize handler
         handler = SlackRequestHandler(app)

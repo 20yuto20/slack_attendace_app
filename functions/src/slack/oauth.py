@@ -20,7 +20,8 @@ def setup_oauth_flow(client_id: str, client_secret: str, db: firestore.Client):
         "commands",
         "files:write",
         "users:read",
-        "users:read.email"
+        "users:read.email",
+        "app_mentions:read"
     ]
 
     base_url = os.getenv("SLACK_APP_BASE_URL", "https://slack-bot-function-2vwbe2ah2q-uc.a.run.app")

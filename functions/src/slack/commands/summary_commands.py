@@ -15,6 +15,7 @@ class SummaryCommands:
     def _register_commands(self) -> None:
         """すべてのコマンドを登録"""
         self.app.command("/summary")(self._handle_summary)
+        self.app.action("select_year")(self._handle_year_selection)
         self.app.action("select_month")(self._handle_month_selection)
         self.app.action("download_csv")(self._handle_csv_download)
 
@@ -26,6 +27,19 @@ class SummaryCommands:
         # 月選択用のブロックを生成するメソッドを呼び出し
         blocks = self._create_month_selector_blocks(current_date.year)
         
+        say(
+            blocks=blocks,
+            channel=body["channel_id"]
+        )
+    
+    def _handle_year_selection(self, ack, body, say):
+        """年選択の処理"""
+        ack()
+        
+        selected_value = body["actions"][0]["selected_option"]["value"]
+        year = int(selected_value)
+        
+        blocks = self._create_month_selector_blocks(year)
         say(
             blocks=blocks,
             channel=body["channel_id"]
@@ -88,27 +102,55 @@ class SummaryCommands:
                 text=f"CSVファイルのアップロードに失敗しました：{str(e)}"
             )
 
-    def _create_month_selector_blocks(self, year: int) -> List[Dict[str, Any]]:
+    def _create_month_selector_blocks(self, current_year: int) -> List[Dict[str, Any]]:
         """
-        指定された年に対して、1月から12月までを選択できる
-        static_select形式のブロックを返すメソッド。
+        年と月を選択できるブロックを返すメソッド。
+        年は2024年から現在の年まで、月は1月から12月まで選択可能。
         """
-        options = []
+        # 年の選択肢を作成
+        year_options = []
+        for y in range(2024, current_year + 1):
+            year_options.append({
+                "text": {
+                    "type": "plain_text",
+                    "text": f"{y}年"
+                },
+                "value": str(y)
+            })
+
+        # 月の選択肢を作成
+        month_options = []
         for m in range(1, 13):
-            options.append({
+            month_options.append({
                 "text": {
                     "type": "plain_text",
                     "text": f"{m}月"
                 },
-                "value": f"{year}-{m}"
+                "value": f"{current_year}-{m}"
             })
-        
+
         blocks = [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"{year}年の月を選択してください"
+                    "text": "年を選択してください"
+                },
+                "accessory": {
+                    "type": "static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "年を選択"
+                    },
+                    "options": year_options,
+                    "action_id": "select_year"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "月を選択してください"
                 },
                 "accessory": {
                     "type": "static_select",
@@ -116,7 +158,7 @@ class SummaryCommands:
                         "type": "plain_text",
                         "text": "月を選択"
                     },
-                    "options": options,
+                    "options": month_options,
                     "action_id": "select_month"
                 }
             }

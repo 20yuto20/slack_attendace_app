@@ -52,6 +52,9 @@ class MessageBuilder:
                         "text": "今日も一日頑張りましょう！ 👍"
                     }
                 ]
+            },
+            {
+                "type": "divider"
             }
         ]
 
@@ -59,6 +62,9 @@ class MessageBuilder:
     def create_punch_out_message(username: str, time: datetime, working_time: float, total_break_time: float) -> List[Dict[str, Any]]:
         """退勤メッセージを作成"""
         return [
+            {
+                "type": "divider"
+            },
             {
                 "type": "header",
                 "text": {
@@ -101,6 +107,9 @@ class MessageBuilder:
                         "text": "お疲れ様でした！ 🌟"
                     }
                 ]
+            },
+            {
+                "type": "divider"
             }
         ]
 
@@ -108,6 +117,9 @@ class MessageBuilder:
     def create_break_start_message(username: str, time: datetime) -> List[Dict[str, Any]]:
         """休憩開始メッセージを作成"""
         return [
+            {
+                "type": "divider"
+            },
             {
                 "type": "header",
                 "text": {
@@ -137,6 +149,9 @@ class MessageBuilder:
                         "text": "ゆっくり休憩してください 🍵"
                     }
                 ]
+            },
+            {
+                "type": "divider"
             }
         ]
 
@@ -144,6 +159,9 @@ class MessageBuilder:
     def create_break_end_message(username: str, time: datetime, duration: float) -> List[Dict[str, Any]]:
         """休憩終了メッセージを作成"""
         return [
+            {
+                "type": "divider"
+            },
             {
                 "type": "header",
                 "text": {
@@ -182,6 +200,9 @@ class MessageBuilder:
                         "text": "それでは、仕事に戻りましょう！ 💪"
                     }
                 ]
+            },
+            {
+                "type": "divider"
             }
         ]
 
@@ -190,11 +211,17 @@ class MessageBuilder:
         """エラーメッセージを作成"""
         return [
             {
+                "type": "divider"
+            },
+            {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
                     "text": f"⚠️ *エラー*: {error_message}"
                 }
+            },
+            {
+                "type": "divider"
             }
         ]
     
@@ -202,6 +229,9 @@ class MessageBuilder:
     def create_monthly_summary_message(username: str, summary: Dict[str, Any]) -> List[Dict[str, Any]]:
         """月次サマリーメッセージを作成"""
         blocks = [
+            {
+                "type": "divider"
+            },
             {
                 "type": "header",
                 "text": {
