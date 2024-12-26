@@ -228,6 +228,32 @@ class MessageBuilder:
     @staticmethod
     def create_monthly_summary_message(username: str, summary: Dict[str, Any]) -> List[Dict[str, Any]]:
         """月次サマリーメッセージを作成"""
+        
+        if summary['total_working_time'] == 0:
+            return [
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"📊 {summary['year']}年{summary['month']}月の勤怠サマリー",
+                        "emoji": True
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "今月は稼働がありませんでした。"
+                    }
+                },
+                {
+                    "type": "divider"
+                }
+            ]
+
         blocks = [
             {
                 "type": "divider"

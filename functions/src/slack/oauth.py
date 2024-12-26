@@ -15,7 +15,7 @@ def setup_oauth_flow(client_id: str, client_secret: str, db: firestore.Client):
 
     # スコープ設定
     # 'bot'スコープを削除し、'files:write:user'を使用
-    SCOPES = [
+    BOT_SCOPES = [
         "chat:write",
         "commands",
         "files:write",
@@ -24,12 +24,17 @@ def setup_oauth_flow(client_id: str, client_secret: str, db: firestore.Client):
         "app_mentions:read"
     ]
 
+    USER_SCOPES = [
+        "users.profile:write"
+    ]
+    
     base_url = os.getenv("SLACK_APP_BASE_URL", "https://slack-bot-function-2vwbe2ah2q-uc.a.run.app")
     
     oauth_settings = OAuthSettings(
         client_id=client_id,
         client_secret=client_secret,
-        scopes=SCOPES,
+        scopes=BOT_SCOPES,
+        user_scopes=USER_SCOPES,
         installation_store=installation_store,
         state_store=state_store,
         install_path="/slack/install",
