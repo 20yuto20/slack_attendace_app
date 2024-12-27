@@ -34,7 +34,10 @@ class MonthlySummaryService:
                 daily_records[date] = {
                     'working_time': 0,
                     'break_time': 0,
-                    'week_number': week_number
+                    'week_number': week_number,
+                    # 当日に複数の勤怠がある場合は、業務内容を連結させるなどの対応をする
+                    # ここでは簡単のため、一つでもあれば追記する仕組みにしておく
+                    'work_description': []
                 }
             
             working_time = record.get_working_time()
@@ -44,6 +47,10 @@ class MonthlySummaryService:
             daily_records[date]['break_time'] += break_time
             weekly_totals[week_number] += working_time
             total_working_time += working_time
+
+            # 業務内容があればリストに追加
+            if record.work_description:
+                daily_records[date]['work_description'].append(record.work_description)
 
         return {
             'daily_records': daily_records,
@@ -75,18 +82,27 @@ class MonthlySummaryService:
         writer.writerow(['従業員名', user_name])
         writer.writerow(['年月', f'{year}年{month}月'])
         writer.writerow([])
-        writer.writerow(['日付', '曜日', '勤務時間', '休憩時間', '週番号'])
+        # 列順: 日付, 曜日, 勤務時間, 休憩時間, 業務内容, 週番号
+        writer.writerow(['日付', '曜日', '勤務時間', '休憩時間', '業務内容', '週番号'])
         
         # 日々のデータを書き込み
         daily_records = summary['daily_records']
         for date in sorted(daily_records.keys()):
             record = daily_records[date]
+            date_str = date.strftime('%Y-%m-%d')
+            weekday_str = date.strftime('%A')
+            working_time_str = self._format_time_to_hours_and_minutes(record['working_time'])
+            break_time_str = self._format_time_to_hours_and_minutes(record['break_time'])
+            work_desc_str = "\n".join(record['work_description']) if record['work_description'] else ""
+            week_num = record['week_number']
+
             writer.writerow([
-                date.strftime('%Y-%m-%d'),
-                date.strftime('%A'),
-                self._format_time_to_hours_and_minutes(record['working_time']),
-                self._format_time_to_hours_and_minutes(record['break_time']),
-                record['week_number']
+                date_str,
+                weekday_str,
+                working_time_str,
+                break_time_str,
+                work_desc_str,
+                week_num
             ])
         
         # 週次サマリーを書き込み

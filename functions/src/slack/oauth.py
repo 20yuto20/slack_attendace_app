@@ -21,7 +21,8 @@ def setup_oauth_flow(client_id: str, client_secret: str, db: firestore.Client):
         "files:write",
         "users:read",
         "users:read.email",
-        "app_mentions:read"
+        "app_mentions:read",
+        "channels:read"
     ]
 
     USER_SCOPES = [

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
@@ -21,6 +21,10 @@ class Attendance:
     start_time: datetime
     end_time: Optional[datetime] = None
     break_periods: List[BreakPeriod] = None
+    work_description: Optional[str] = None
+    work_progress: Optional[str] = None
+    report_channel_id: Optional[str] = None
+    mention_user_ids: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         if self.break_periods is None:
@@ -50,7 +54,11 @@ class Attendance:
                     "end_time": period.end_time.isoformat() if period.end_time else None
                 }
                 for period in self.break_periods
-            ]
+            ],
+            "work_description": self.work_description,
+            "work_progress": self.work_progress,
+            "report_channel_id": self.report_channel_id,
+            "mention_user_ids": self.mention_user_ids
         }
 
     @classmethod
@@ -68,5 +76,9 @@ class Attendance:
             user_name=data["user_name"],
             start_time=datetime.fromisoformat(data["start_time"]),
             end_time=datetime.fromisoformat(data["end_time"]) if data.get("end_time") else None,
-            break_periods=break_periods
+            break_periods=break_periods,
+            work_description=data.get("work_description"),
+            work_progress=data.get("work_progress"),
+            report_channel_id=data.get("report_channel_id"),
+            mention_user_ids=data.get("mention_user_ids", [])
         )
