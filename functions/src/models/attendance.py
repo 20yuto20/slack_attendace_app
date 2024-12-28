@@ -16,11 +16,12 @@ class BreakPeriod:
 
 @dataclass
 class Attendance:
-    user_id: str
-    user_name: str
-    start_time: datetime
+    doc_id: Optional[str] = None  # ★ ドキュメントIDを保持するフィールドを追加
+    user_id: str = ""
+    user_name: str = ""
+    start_time: datetime = None
     end_time: Optional[datetime] = None
-    break_periods: List[BreakPeriod] = None
+    break_periods: List[BreakPeriod] = field(default_factory=list)
     work_description: Optional[str] = None
     work_progress: Optional[str] = None
     report_channel_id: Optional[str] = None
@@ -43,7 +44,7 @@ class Attendance:
 
     def to_dict(self) -> dict:
         """Firestoreに保存するためのdict形式に変換"""
-        return {
+        data = {
             "user_id": self.user_id,
             "user_name": self.user_name,
             "start_time": self.start_time.isoformat(),
@@ -60,20 +61,29 @@ class Attendance:
             "report_channel_id": self.report_channel_id,
             "mention_user_ids": self.mention_user_ids
         }
+        # doc_id は Firestoreのドキュメントとは別管理するなら含めなくてもよい
+        # 必要なら下記のように含める
+        if self.doc_id:
+            data["doc_id"] = self.doc_id
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> 'Attendance':
         """dict形式からAttendanceオブジェクトを生成"""
-        break_periods = [
-            BreakPeriod(
-                start_time=datetime.fromisoformat(period["start_time"]),
-                end_time=datetime.fromisoformat(period["end_time"]) if period.get("end_time") else None
+        from datetime import datetime
+        break_periods_data = data.get("break_periods", [])
+        break_periods = []
+        for bp_data in break_periods_data:
+            bp = BreakPeriod(
+                start_time=datetime.fromisoformat(bp_data["start_time"]),
+                end_time=datetime.fromisoformat(bp_data["end_time"]) if bp_data.get("end_time") else None
             )
-            for period in data.get("break_periods", [])
-        ]
+            break_periods.append(bp)
+
         return cls(
-            user_id=data["user_id"],
-            user_name=data["user_name"],
+            doc_id=data.get("doc_id"),  # to_dict内でdoc_idを格納している場合のみ有効
+            user_id=data.get("user_id", ""),
+            user_name=data.get("user_name", ""),
             start_time=datetime.fromisoformat(data["start_time"]),
             end_time=datetime.fromisoformat(data["end_time"]) if data.get("end_time") else None,
             break_periods=break_periods,

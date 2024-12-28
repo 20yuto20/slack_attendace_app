@@ -2,7 +2,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from google.cloud.firestore_v1.base_query import FieldFilter, And, Or
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 from src.models.attendance import Attendance  # 絶対パスに修正
 from src.utils.time_utils import get_current_time
@@ -23,12 +23,18 @@ class FirestoreRepository:
             raise
 
     def create_attendance(self, attendance: Attendance) -> None:
-        """新しい勤怠記録を作成"""
+        """
+        新しい勤怠記録を作成
+        - ドキュメントIDを自動生成し、attendance.doc_id に保持
+        """
         doc_ref = self.attendance_collection.document()
+        attendance.doc_id = doc_ref.id  # ★ 生成したIDをAttendanceにセット
         doc_ref.set(attendance.to_dict())
 
     def get_active_attendance(self, user_id: str) -> Optional[Attendance]:
-        """ユーザーのアクティブな（終了していない）勤怠記録を取得"""
+        """
+        ユーザーのアクティブな（終了していない）勤怠記録を取得
+        """
         query = (
             self.attendance_collection
             .where(filter=firestore.FieldFilter("user_id", "==", user_id))
@@ -38,22 +44,21 @@ class FirestoreRepository:
         docs = query.get()
         
         for doc in docs:
-            return Attendance.from_dict(doc.to_dict())
+            attendance = Attendance.from_dict(doc.to_dict())
+            attendance.doc_id = doc.id  # ★ ドキュメントIDを保持
+            return attendance
         return None
 
     def update_attendance(self, attendance: Attendance) -> None:
-        """勤怠記録を更新"""
-        query = (
-            self.attendance_collection
-            .where(filter=firestore.FieldFilter("user_id", "==", attendance.user_id))
-            .where(filter=firestore.FieldFilter("end_time", "==", None))
-            .limit(1)
-        )
-        docs = query.get()
-        
-        for doc in docs:
-            doc.reference.set(attendance.to_dict())
-            break
+        """
+        ドキュメントIDを用いて勤怠記録を更新
+        - すでに end_time がセットされているレコードでも問題なく上書き可能
+        """
+        if not attendance.doc_id:
+            raise ValueError("Cannot update attendance without doc_id.")
+        # doc_id で指定
+        doc_ref = self.attendance_collection.document(attendance.doc_id)
+        doc_ref.set(attendance.to_dict())
 
     def get_attendance_by_period(
         self, 
@@ -64,21 +69,8 @@ class FirestoreRepository:
     ) -> List[Attendance]:
         """
         指定期間の勤怠記録を取得
-        
-        Args:
-            user_id (str): ユーザーID
-            start_date (datetime): 期間開始日時
-            end_date (datetime): 期間終了日時
-            batch_size (int): 1回のクエリで取得するドキュメント数
-            
-        Returns:
-            List[Attendance]: 勤怠記録のリスト
-        
-        Raises:
-            FirebaseError: Firestoreへのアクセスに失敗した場合
         """
         try:
-            # クエリの構築
             query = (
                 self.attendance_collection
                 .where(filter=FieldFilter("user_id", "==", user_id))
@@ -91,9 +83,10 @@ class FirestoreRepository:
             records = []
             docs = query.get()
             
-            # バッチ処理でデータを取得
             while docs:
-                records.extend([self._convert_to_attendance(doc) for doc in docs])
+                for d in docs:
+                    attendance = self._convert_to_attendance(d)
+                    records.append(attendance)
                 
                 # 次のバッチがあるか確認
                 last_doc = docs[-1]
@@ -104,7 +97,6 @@ class FirestoreRepository:
                 )
             
             return records
-            
         except Exception as e:
             print(f"Error retrieving attendance records: {str(e)}")
             raise
@@ -112,15 +104,12 @@ class FirestoreRepository:
     def _convert_to_attendance(self, doc: firestore.DocumentSnapshot) -> Attendance:
         """
         Firestoreのドキュメントを勤怠オブジェクトに変換
-        
-        Args:
-            doc (DocumentSnapshot): Firestoreのドキュメント
-            
-        Returns:
-            Attendance: 変換された勤怠オブジェクト
+        - doc.id を attendance.doc_id に保持
         """
         data = doc.to_dict()
-        return Attendance.from_dict(data)
+        attendance = Attendance.from_dict(data)
+        attendance.doc_id = doc.id  # ★ 取得したドキュメントIDを保持
+        return attendance
 
     def get_attendance_stats(
         self, 
@@ -130,14 +119,6 @@ class FirestoreRepository:
     ) -> Dict[str, Any]:
         """
         指定期間の勤怠統計を取得
-        
-        Args:
-            user_id (str): ユーザーID
-            start_date (datetime): 期間開始日時
-            end_date (datetime): 期間終了日時
-            
-        Returns:
-            Dict[str, Any]: 統計情報
         """
         records = self.get_attendance_by_period(user_id, start_date, end_date)
         
