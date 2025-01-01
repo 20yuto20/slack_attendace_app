@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 from slack_bolt import App
+# from slack_sdk import WebClient
 
 from ...services.monthly_summary_service import MonthlySummaryService
 from ..message_builder import MessageBuilder
@@ -13,71 +14,187 @@ class SummaryCommands:
         self._register_commands()
 
     def _register_commands(self) -> None:
-        """すべてのコマンドを登録"""
+        """
+        すべてのコマンドとビュー（モーダル）サブミッション、アクションを登録
+        """
+        # /summary コマンド
         self.app.command("/summary")(self._handle_summary)
-        self.app.action("select_year")(self._handle_year_selection)
-        self.app.action("select_month")(self._handle_month_selection)
+
+        # 新規追加: /help コマンド
+        self.app.command("/help")(self._handle_help)
+
+        # モーダルの submit アクション
+        @self.app.view("summary_modal")
+        def _handle_summary_modal_submission(ack, body, view, client, logger):
+            """
+            モーダル送信時（「表示」ボタン押下時）の処理
+            1. 年・月・選択チャンネルを取得
+            2. 選択したチャンネルにサマリーを投稿
+            """
+            ack()
+
+            user_id = body["user"]["id"]
+            user_name = body["user"]["name"]
+
+            # モーダル上の values を取得
+            year_str = view["state"]["values"]["year_block"]["year_select"]["selected_option"]["value"]
+            month_str = view["state"]["values"]["month_block"]["month_select"]["selected_option"]["value"]
+            channel_list = view["state"]["values"]["channel_block"]["channel_select"]["selected_conversations"]
+
+            year = int(year_str)
+            month = int(month_str)
+
+            # 取得した年・月で月次サマリーを作成
+            summary = self.summary_service.get_monthly_summary(
+                user_id=user_id,
+                year=year,
+                month=month
+            )
+
+            # 表示用のブロックを生成
+            blocks = MessageBuilder.create_monthly_summary_message(
+                username=user_name,
+                summary=summary
+            )
+
+            # 選択されたチャンネルそれぞれに投稿
+            if channel_list:
+                for ch in channel_list:
+                    try:
+                        client.chat_postMessage(
+                            channel=ch,
+                            text=f"{year}年{month}月の勤怠サマリー",
+                            blocks=blocks
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to post summary to channel {ch}: {e}")
+
+        # CSVダウンロードのボタンアクション
         self.app.action("download_csv")(self._handle_csv_download)
 
-    def _handle_summary(self, ack, body, say):
-        """サマリーコマンドの処理"""
+    def _handle_summary(self, ack, command, client):
+        """
+        /summary コマンド:
+        1. モーダルを開く (年・月・チャンネル選択 + 「表示」ボタン)
+        """
         ack()
-        
-        current_date = datetime.now()
-        # 月選択用のブロックを生成するメソッドを呼び出し
-        blocks = self._create_month_selector_blocks(current_date.year)
-        
-        say(
-            blocks=blocks,
-            channel=body["channel_id"]
-        )
-    
-    def _handle_year_selection(self, ack, body, say):
-        """年選択の処理"""
-        ack()
-        
-        selected_value = body["actions"][0]["selected_option"]["value"]
-        year = int(selected_value)
-        
-        blocks = self._create_month_selector_blocks(year)
-        say(
-            blocks=blocks,
-            channel=body["channel_id"]
+
+        trigger_id = command["trigger_id"]
+
+        # モーダルのレイアウト定義
+        modal_view = {
+            "type": "modal",
+            "callback_id": "summary_modal",
+            "title": {
+                "type": "plain_text",
+                "text": "勤怠サマリー表示"
+            },
+            "submit": {
+                "type": "plain_text",
+                "text": "表示"
+            },
+            "close": {
+                "type": "plain_text",
+                "text": "キャンセル"
+            },
+            "blocks": [
+                {
+                    "type": "section",
+                    "block_id": "year_block",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "年を選択してください"
+                    },
+                    "accessory": {
+                        "type": "static_select",
+                        "action_id": "year_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": "年"
+                        },
+                        "options": self._build_year_options()
+                    }
+                },
+                {
+                    "type": "section",
+                    "block_id": "month_block",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "月を選択してください"
+                    },
+                    "accessory": {
+                        "type": "static_select",
+                        "action_id": "month_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": "月"
+                        },
+                        "options": self._build_month_options()
+                    }
+                },
+                {
+                    "type": "input",
+                    "block_id": "channel_block",
+                    "element": {
+                        "type": "multi_conversations_select",
+                        "action_id": "channel_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": "投稿先チャンネルを選択"
+                        }
+                    },
+                    "label": {
+                        "type": "plain_text",
+                        "text": "サマリーを表示するチャンネル"
+                    }
+                }
+            ]
+        }
+
+        # モーダルを開く
+        client.views_open(
+            trigger_id=trigger_id,
+            view=modal_view
         )
 
-    def _handle_month_selection(self, ack, body, say):
-        """月選択の処理"""
+    def _handle_help(self, ack, command, say):
+        """
+        新規追加: /help コマンドの処理
+        以前の handle_mention_help と同じメッセージを表示
+        """
         ack()
-        
-        selected_value = body["actions"][0]["selected_option"]["value"]
-        year, month = map(int, selected_value.split("-"))
-        
-        summary = self.summary_service.get_monthly_summary(
-            user_id=body["user"]["id"],
-            year=year,
-            month=month
+        help_message = (
+            "▼ 以下のコマンドをご利用いただけます。\n\n"
+            "• `/punch_in`: 出勤\n"
+            "• `/punch_out`: 退勤\n"
+            "• `/break_begin`: 休憩開始\n"
+            "• `/break_end`: 休憩終了\n"
+            "• `/summary`: 勤怠サマリー\n"
+            "• `/help`: 使い方ガイドの表示\n\n"
+            "こちらのガイドサイトにも詳しい使い方が掲載されています。\n"
+            "<https://aerial-lentil-c95.notion.site/bot-164d7101a27680d98fbae0385153a637>\n\n"
+            "不明点があればお気軽にお問い合わせください！"
         )
-        
-        blocks = MessageBuilder.create_monthly_summary_message(
-            username=body["user"]["name"],
-            summary=summary
-        )
-        
-        say(
-            blocks=blocks,
-            channel=body["channel"]["id"]
-        )
+        # /help コマンドを打ったチャンネルにヘルプを投稿
+        say(text=help_message, channel=command["channel_id"])
 
     def _handle_csv_download(self, ack, body, client):
-        """CSVダウンロードの処理"""
+        """
+        CSVダウンロードボタンの処理:
+        1. ボタンの value から年・月を取得
+        2. CSVを生成してアップロード
+        """
         ack()
     
         year_month = body["actions"][0]["value"]
         year, month = map(int, year_month.split("-"))
     
+        user_id = body["user"]["id"]
+        user_name = body["user"]["name"]
+
         filename, csv_content = self.summary_service.generate_csv(
-            user_id=body["user"]["id"],
-            user_name=body["user"]["name"],
+            user_id=user_id,
+            user_name=user_name,
             year=year,
             month=month
         )
@@ -102,14 +219,13 @@ class SummaryCommands:
                 text=f"CSVファイルのアップロードに失敗しました：{str(e)}"
             )
 
-    def _create_month_selector_blocks(self, current_year: int) -> List[Dict[str, Any]]:
+    def _build_year_options(self) -> List[Dict[str, Any]]:
         """
-        年と月を選択できるブロックを返すメソッド。
-        年は2024年から現在の年まで、月は1月から12月まで選択可能。
+        2023年から現在の+1年くらいまで、あるいは固定範囲を想定して
+        年を選択できる static_select の options を構築
         """
-        # 年の選択肢を作成
         year_options = []
-        for y in range(2024, current_year + 1):
+        for y in range(2022, 2027):
             year_options.append({
                 "text": {
                     "type": "plain_text",
@@ -117,8 +233,12 @@ class SummaryCommands:
                 },
                 "value": str(y)
             })
+        return year_options
 
-        # 月の選択肢を作成
+    def _build_month_options(self) -> List[Dict[str, Any]]:
+        """
+        1〜12月を選択できる static_select の options
+        """
         month_options = []
         for m in range(1, 13):
             month_options.append({
@@ -126,41 +246,6 @@ class SummaryCommands:
                     "type": "plain_text",
                     "text": f"{m}月"
                 },
-                "value": f"{current_year}-{m}"
+                "value": str(m)
             })
-
-        blocks = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "年を選択してください"
-                },
-                "accessory": {
-                    "type": "static_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "年を選択"
-                    },
-                    "options": year_options,
-                    "action_id": "select_year"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "月を選択してください"
-                },
-                "accessory": {
-                    "type": "static_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "月を選択"
-                    },
-                    "options": month_options,
-                    "action_id": "select_month"
-                }
-            }
-        ]
-        return blocks
+        return month_options

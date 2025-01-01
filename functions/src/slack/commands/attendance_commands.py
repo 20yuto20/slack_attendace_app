@@ -1,9 +1,6 @@
 from typing import Callable, List
 from slack_bolt import App
 from slack_sdk import WebClient
-# from slack_bolt.context.respond import Respond
-# from slack_bolt.context.say import Say
-# from slack_bolt.adapter.aws_lambda import SlackRequestHandler
 
 from src.services.attendance_service import AttendanceService
 from src.slack.message_builder import MessageBuilder
@@ -50,15 +47,13 @@ class AttendanceCommands:
                 metadata = "{}"
                 logger.info(f"No private_metadata found: {e}")
 
-            # private_metadata は JSON 形式で格納している場合が多いので、必要に応じて parse する
             import json
             try:
                 meta_dict = json.loads(metadata)
             except:
                 meta_dict = {}
 
-            # ここでは /punch_out コマンドを打ったチャンネルを private_metadata["channel_id"] に入れている想定
-            fallback_channel_id = meta_dict.get("channel_id", "")  # モーダル開いた時点で記憶しているチャンネルID
+            fallback_channel_id = meta_dict.get("channel_id", "")  # モーダル開いた時点でのチャンネルID
 
             user_id = body["user"]["id"]
             user_name = body["user"]["name"]
@@ -92,16 +87,84 @@ class AttendanceCommands:
 
             # --- [4] 選択されたチャンネルに業務報告を投稿 ---
             if channel_id_selected:
-                report_text = f"*本日の業務報告*\n- 業務概要: {work_description}\n- 進捗: {work_progress}"
+                # 実働時間・休憩時間の算出
+                working_time = attendance.get_working_time()
+                break_time = attendance.get_total_break_time()
+
+                # メンション文字列
+                mention_text = ""
                 if mention_users_selected:
-                    # メンション文字列を組み立てる
-                    mentions = " ".join([f"<@{uid}>" for uid in mention_users_selected])
-                    report_text = f"{mentions}\n" + report_text
+                    mention_text = " ".join([f"<@{uid}>" for uid in mention_users_selected])
+
+                # Blocks 形式で見やすく表示
+                # Markdownで整形した各項目を表示
+                report_blocks = [
+                    {
+                        "type": "header",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "本日の業務報告",
+                            "emoji": True
+                        }
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*報告者:*\n<@{user_id}>"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*実働時間:*\n{MessageBuilder.format_duration(working_time)}"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*休憩時間:*\n{MessageBuilder.format_duration(break_time)}"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "divider"
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*業務概要:*\n{work_description}"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*進捗:*\n{work_progress}"
+                            }
+                        ]
+                    }
+                ]
+
+                # 投稿するテキスト（fallback用）
+                fallback_text = (
+                    f"報告者: <@{user_id}>\n"
+                    f"実働時間: {MessageBuilder.format_duration(working_time)}\n"
+                    f"休憩時間: {MessageBuilder.format_duration(break_time)}\n"
+                    f"業務概要:\n{work_description}\n"
+                    f"進捗:\n{work_progress}"
+                )
+                # メンションを冒頭に追加する場合
+                if mention_text:
+                    fallback_text = mention_text + "\n" + fallback_text
 
                 try:
                     client.chat_postMessage(
                         channel=channel_id_selected,
-                        text=report_text
+                        text=fallback_text,
+                        blocks=report_blocks,
+                        mrkdwn=True
                     )
                 except Exception as e:
                     client.chat_postMessage(
@@ -110,20 +173,14 @@ class AttendanceCommands:
                     )
 
             # --- [5] コマンド実行チャンネルに退勤メッセージを送信 ---
-            # 退勤メッセージ用のブロックを作成
             blocks = MessageBuilder.create_punch_out_message(
                 username=user_name,
                 time=attendance.end_time,
                 working_time=attendance.get_working_time(),
                 total_break_time=attendance.get_total_break_time()
             )
-            # Slackのステータスをクリア
             self._handle_slack_status(user_id=user_id, text="", emoji="")
-            # ここを修正: command["channel_id"] が使えるかどうかの可用性に注意
-            # 一般的には private_metadata 経由でチャンネルIDを取得するので fallback_channel_id を使う
-            # 修正要望に忠実に「command["channel_id"]」を利用したい場合、例外処理を入れます。
             final_channel_id = fallback_channel_id
-            # 万が一 command["channel_id"] が使える場合のサンプル
             if command and "channel_id" in command:
                 final_channel_id = command["channel_id"]
 
@@ -203,13 +260,11 @@ class AttendanceCommands:
         """
         ack()
 
-        # private_metadata にコマンド発行チャンネルIDを保存しておく
         import json
         private_metadata = json.dumps({
             "channel_id": command["channel_id"]
         })
 
-        # モーダルを作成
         modal_view = {
             "type": "modal",
             "callback_id": "punch_out_report_modal",
@@ -225,7 +280,6 @@ class AttendanceCommands:
                 "type": "plain_text",
                 "text": "キャンセル"
             },
-            # 上記で作成した metadata をセット
             "private_metadata": private_metadata,
             "blocks": [
                 {
@@ -255,10 +309,6 @@ class AttendanceCommands:
                     }
                 },
                 {
-                    # channels_select -> conversations_select に変更
-                    # private channel も選べるよう "include_private_channels": True 相当が必要
-                    # Slack Bolt Blocksではデフォルトで private channel を含むようになっていますが
-                    # オプション: filter に { "include": ["private"] } 等は 2023年時点未サポート
                     "type": "input",
                     "block_id": "report_channel_block",
                     "label": {
@@ -292,7 +342,6 @@ class AttendanceCommands:
             ]
         }
 
-        # モーダルを開く
         client.views_open(
             trigger_id=command["trigger_id"],
             view=modal_view

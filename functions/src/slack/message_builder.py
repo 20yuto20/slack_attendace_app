@@ -246,7 +246,7 @@ class MessageBuilder:
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "今月は稼働がありませんでした。"
+                        "text": f"{summary['year']}年{summary['month']}月は稼働がありませんでした。"
                     }
                 },
                 {
