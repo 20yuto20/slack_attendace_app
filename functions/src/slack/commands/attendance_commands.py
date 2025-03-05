@@ -60,7 +60,9 @@ class AttendanceCommands:
 
             # --- [1] フォーム入力情報を取得 ---
             work_description = view["state"]["values"]["work_description_block"]["work_description_input"]["value"]
-            work_progress = view["state"]["values"]["work_progress_block"]["work_progress_input"]["value"]
+            
+            # 「詳しい進捗」欄は廃止するため、空の文字列をセット
+            work_progress = ""
 
             channel_id_selected = view["state"]["values"]["report_channel_block"]["report_channel_input"]["selected_conversation"]
             mention_users_selected = view["state"]["values"]["mention_users_block"]["mention_users_input"].get("selected_users", [])
@@ -137,11 +139,7 @@ class AttendanceCommands:
                         "fields": [
                             {
                                 "type": "mrkdwn",
-                                "text": f"*業務概要:*\n{work_description}"
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*進捗:*\n{work_progress}"
+                                "text": f"*業務内容:*\n{work_description}"
                             }
                         ]
                     }
@@ -152,8 +150,7 @@ class AttendanceCommands:
                     f"報告者: <@{user_id}>\n"
                     f"実働時間: {MessageBuilder.format_duration(working_time)}\n"
                     f"休憩時間: {MessageBuilder.format_duration(break_time)}\n"
-                    f"業務概要:\n{work_description}\n"
-                    f"進捗:\n{work_progress}"
+                    f"業務内容:\n{work_description}"
                 )
                 # メンションを冒頭に追加する場合
                 if mention_text:
@@ -265,6 +262,7 @@ class AttendanceCommands:
             "channel_id": command["channel_id"]
         })
 
+        # モーダルから「詳しい進捗」欄を削除
         modal_view = {
             "type": "modal",
             "callback_id": "punch_out_report_modal",
@@ -292,19 +290,6 @@ class AttendanceCommands:
                     "element": {
                         "type": "plain_text_input",
                         "action_id": "work_description_input",
-                        "multiline": True
-                    }
-                },
-                {
-                    "type": "input",
-                    "block_id": "work_progress_block",
-                    "label": {
-                        "type": "plain_text",
-                        "text": "詳しい進捗"
-                    },
-                    "element": {
-                        "type": "plain_text_input",
-                        "action_id": "work_progress_input",
                         "multiline": True
                     }
                 },

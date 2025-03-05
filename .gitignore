@@ -9,3 +9,4 @@ __pycache__
 data/installations/
 data/states/
 repopack-output.txt
+.vscode
