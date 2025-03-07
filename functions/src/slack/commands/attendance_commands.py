@@ -54,6 +54,7 @@ class AttendanceCommands:
                 meta_dict = {}
 
             fallback_channel_id = meta_dict.get("channel_id", "")  # モーダル開いた時点でのチャンネルID
+            team_id = meta_dict.get("team_id", "")  # ワークスペースID
 
             user_id = body["user"]["id"]
             user_name = body["user"]["name"]
@@ -69,7 +70,8 @@ class AttendanceCommands:
 
             # --- [2] 退勤処理 ---
             success, message, attendance = self.attendance_service.punch_out(
-                user_id=user_id
+                user_id=user_id,
+                team_id=team_id  # チームIDを渡す
             )
 
             if not success or not attendance:
@@ -227,9 +229,12 @@ class AttendanceCommands:
         """出勤コマンドの処理"""
         ack()
         
+        team_id = command.get("team_id", "")  # チームIDを取得
+        
         success, message, time = self.attendance_service.punch_in(
             user_id=command["user_id"],
-            user_name=command["user_name"]
+            user_name=command["user_name"],
+            team_id=team_id  # チームIDを渡す
         )
 
         if success:
@@ -259,7 +264,8 @@ class AttendanceCommands:
 
         import json
         private_metadata = json.dumps({
-            "channel_id": command["channel_id"]
+            "channel_id": command["channel_id"],
+            "team_id": command.get("team_id", "")  # チームIDも保存
         })
 
         # モーダルから「詳しい進捗」欄を削除
@@ -336,8 +342,11 @@ class AttendanceCommands:
         """休憩開始コマンドの処理"""
         ack()
         
+        team_id = command.get("team_id", "")  # チームIDを取得
+        
         success, message, time = self.attendance_service.start_break(
-            user_id=command["user_id"]
+            user_id=command["user_id"],
+            team_id=team_id  # チームIDを渡す
         )
 
         if success:
@@ -363,8 +372,11 @@ class AttendanceCommands:
         """休憩終了コマンドの処理"""
         ack()
         
+        team_id = command.get("team_id", "")  # チームIDを取得
+        
         success, message, result = self.attendance_service.end_break(
-            user_id=command["user_id"]
+            user_id=command["user_id"],
+            team_id=team_id  # チームIDを渡す
         )
 
         if success and result is not None:

@@ -12,14 +12,14 @@ class MonthlySummaryService:
     def __init__(self, repository: FirestoreRepository):
         self.repository = repository
 
-    def get_monthly_summary(self, user_id: str, year: int, month: int) -> Dict[str, Any]:
+    def get_monthly_summary(self, user_id: str, year: int, month: int, team_id: str = None) -> Dict[str, Any]:
         """指定された月の勤怠サマリーを取得"""
         # 月の開始日と終了日を取得
         start_date = get_start_of_month(year, month)
         end_date = get_end_of_month(year, month)
         
-        # 指定月の全ての勤怠記録を取得
-        records = self.repository.get_attendance_by_period(user_id, start_date, end_date)
+        # 指定月の全ての勤怠記録を取得（ワークスペース制限つき）
+        records = self.repository.get_attendance_by_period(user_id, start_date, end_date, team_id=team_id)
         
         # 日ごとの勤怠記録を集計
         daily_records = {}
@@ -67,9 +67,9 @@ class MonthlySummaryService:
             return f"{hours}時間{mins}分"
         return f"{mins}分"
     
-    def generate_csv(self, user_id: str, user_name: str, year: int, month: int) -> Tuple[str, str]:
+    def generate_csv(self, user_id: str, user_name: str, year: int, month: int, team_id: str = None) -> Tuple[str, str]:
         """月次サマリーのCSVを生成"""
-        summary = self.get_monthly_summary(user_id, year, month)
+        summary = self.get_monthly_summary(user_id, year, month, team_id=team_id)
         
         # CSVファイル名を生成
         filename = f"attendance_summary_{user_name}_{year}_{month:02d}.csv"

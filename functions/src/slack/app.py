@@ -8,14 +8,14 @@ import os
 
 from src.services.attendance_service import AttendanceService
 from src.services.monthly_summary_service import MonthlySummaryService
+from src.services.status_service import StatusService
 from src.slack.commands.attendance_commands import AttendanceCommands
 from src.slack.commands.summary_commands import SummaryCommands
+from src.slack.commands.status_commands import StatusCommands
 from src.slack.oauth import setup_oauth_flow
 from src.repositories.firestore_repository import FirestoreRepository
 from src.config import get_config
 from src.slack.events import handle_bot_invited_to_channel
-# 以下の import は削除またはコメントアウト
-# from src.slack.events import handle_mention_help
 
 def create_slack_bot_function(request: Request) -> Response:
     """Create and return the Slack bot function"""
@@ -32,6 +32,7 @@ def create_slack_bot_function(request: Request) -> Response:
         # Initialize services
         attendance_service = AttendanceService(firebase_repo)
         monthly_summary_service = MonthlySummaryService(firebase_repo)
+        status_service = StatusService(firebase_repo)
         
         # Setup OAuth with Firestore-based stores
         # OAuthSettingsでinstall_path, redirect_uri_path, success_url, failure_urlを指定済み
@@ -47,11 +48,10 @@ def create_slack_bot_function(request: Request) -> Response:
         # Register commands
         AttendanceCommands(app, attendance_service)
         SummaryCommands(app, monthly_summary_service)
+        StatusCommands(app, status_service)
 
         # Register events
         app.event("member_joined_channel")(handle_bot_invited_to_channel)
-        # 以下の行を削除またはコメントアウト
-        # app.event("app_mention")(handle_mention_help)
         
         # Initialize handler
         handler = SlackRequestHandler(app)
