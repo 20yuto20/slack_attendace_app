@@ -5,6 +5,7 @@ from slack_sdk import WebClient
 from .repositories.firestore_repository import FirestoreRepository
 from .services.warning_service import WarningService
 from .config import get_config
+from .slack.message_builder import MessageBuilder
 
 def create_alert_function(repository: FirestoreRepository, client: WebClient = None):
     """
@@ -63,13 +64,22 @@ def create_alert_function(repository: FirestoreRepository, client: WebClient = N
                 # 各ユーザーに警告を送信
                 for warning in warnings:
                     try:
-                        # 警告メッセージを整形
-                        message = warning_service.format_warning_message(warning)
+                        # 警告メッセージを整形 (テキスト用)
+                        text_message = warning_service.format_warning_message(warning)
+                        
+                        # 警告ブロックを生成 (リッチメッセージ用)
+                        blocks = MessageBuilder.create_warning_message(
+                            warning_type=warning['warning_type'],
+                            user_id=warning['user_id'],
+                            user_name=warning['user_name'],
+                            duration=warning['duration']
+                        )
                         
                         # DMで警告を送信
                         slack_client.chat_postMessage(
                             channel=warning['user_id'],
-                            text=message
+                            text=text_message,
+                            blocks=blocks
                         )
                         
                         print(f"Sent warning to user {warning['user_id']} for {warning['warning_type']}")
@@ -100,7 +110,7 @@ def manual_attendance_alerts(request: https_fn.Request) -> https_fn.Response:
         
         # APIキーによる認証（簡易的なセキュリティ）
         api_key = request.headers.get('X-API-Key')
-        if not api_key or api_key != config.get('debug_api_key', ''):
+        if not api_key or api_key != getattr(config, 'debug_api_key', ''):
             return https_fn.Response(
                 json.dumps({"error": "Unauthorized"}),
                 status=401,

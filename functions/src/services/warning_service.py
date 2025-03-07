@@ -5,6 +5,7 @@ from ..models.attendance import Attendance
 from ..repositories.firestore_repository import FirestoreRepository
 from ..utils.time_utils import get_current_time
 from ..config import get_config
+from ..slack.message_builder import MessageBuilder
 
 class WarningService:
     """勤務時間・休憩時間の警告を管理するサービス"""
@@ -128,6 +129,15 @@ class WarningService:
         Returns:
             str: 整形された警告メッセージ
         """
+        # MessageBuilderのメソッドを使用するようにリファクタリング
+        blocks = MessageBuilder.create_warning_message(
+            warning_type=warning_info['warning_type'],
+            user_id=warning_info['user_id'],
+            user_name=warning_info['user_name'],
+            duration=warning_info['duration']
+        )
+        
+        # テキストメッセージを生成（簡易版）
         if warning_info['warning_type'] == 'long_work':
             hours = int(warning_info['duration'] // 60)
             minutes = int(warning_info['duration'] % 60)

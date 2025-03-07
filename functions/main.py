@@ -9,9 +9,6 @@ from src.warmup import warmup_function  # Import the warmup function
 from src.alerts import create_alert_function, manual_attendance_alerts  # Import alert functions
 from src.repositories.firestore_repository import FirestoreRepository
 from src.config import get_config
-from src.alerts import create_alert_function, manual_attendance_alerts  # Import alert functions
-from src.repositories.firestore_repository import FirestoreRepository
-from src.config import get_config
 
 # 環境変数の読み込み
 load_dotenv()
@@ -31,24 +28,14 @@ except Exception as e:
     print(f"Firebase initialization error: {str(e)}")
     raise
 
-# レポジトリの初期化
+# レポジトリの初期化（一回だけ実行）
 config = get_config()
 repository = FirestoreRepository(
     project_id=config.firebase.project_id,
     credentials_path=config.firebase.credentials_path
 )
 
-# アラート機能の初期化と登録
-attendance_alerts = create_alert_function(repository)
-
-# レポジトリの初期化
-config = get_config()
-repository = FirestoreRepository(
-    project_id=config.firebase.project_id,
-    credentials_path=config.firebase.credentials_path
-)
-
-# アラート機能の初期化と登録
+# アラート機能の初期化と登録（一回だけ実行）
 attendance_alerts = create_alert_function(repository)
 
 @https_fn.on_request()
