@@ -6,14 +6,14 @@ from firebase_admin import initialize_app, credentials
 
 from src.slack.app import create_slack_bot_function
 from src.warmup import warmup_function  # Import the warmup function
-from src.alerts import create_alert_function, manual_attendance_alerts  # Import alert functions
+# We no longer need to import alerts here since they're directly defined with decorators
 from src.repositories.firestore_repository import FirestoreRepository
 from src.config import get_config
 
-# 環境変数の読み込み
+# Load environment variables
 load_dotenv()
 
-# Firebase認証情報の設定
+# Initialize Firebase (only once)
 try:
     cred_path = os.getenv('APP_FIREBASE_CREDENTIALS_PATH')
     if not cred_path:
@@ -28,29 +28,19 @@ except Exception as e:
     print(f"Firebase initialization error: {str(e)}")
     raise
 
-# レポジトリの初期化（一回だけ実行）
-config = get_config()
-repository = FirestoreRepository(
-    project_id=config.firebase.project_id,
-    credentials_path=config.firebase.credentials_path
-)
-
-# アラート機能の初期化と登録（一回だけ実行）
-attendance_alerts = create_alert_function(repository)
-
 @https_fn.on_request()
 def slack_bot_function(request: https_fn.Request) -> https_fn.Response:
     """
-    Slackボットのエントリーポイント関数
+    Entry point for Slack bot
     
     Args:
-        request: Cloud Functionsのリクエストオブジェクト
+        request: Cloud Functions request object
         
     Returns:
-        Response: Cloud Functionsのレスポンスオブジェクト
+        Response: Cloud Functions response object
     """
     try:
-        # ウォームアップリクエストの場合は処理せずにOKを返す
+        # Handle warmup request
         if request.path == "/warmup" and request.headers.get("X-Warmup-Request") == "true":
             print("***** Received warmup request for slack_bot_function *****")
             return https_fn.Response(
@@ -62,7 +52,7 @@ def slack_bot_function(request: https_fn.Request) -> https_fn.Response:
                 mimetype='application/json'
             )
         
-        # 通常のリクエストは全てcreate_slack_bot_functionで処理
+        # Process normal request
         return create_slack_bot_function(request)
     except Exception as e:
         print(f"Error in slack_bot_function: {str(e)}")
@@ -74,3 +64,7 @@ def slack_bot_function(request: https_fn.Request) -> https_fn.Response:
             status=500,
             mimetype='application/json'
         )
+
+# Note: The other functions (attendance_alerts_function, manual_attendance_alerts, warmup_function)
+# are defined in their respective modules with the appropriate decorators
+# and will be automatically detected by Firebase Functions

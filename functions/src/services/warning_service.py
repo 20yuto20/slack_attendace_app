@@ -1,54 +1,53 @@
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple, Optional
+from datetime import datetime
+from typing import List, Dict, Any, Optional
 
 from ..models.attendance import Attendance
 from ..repositories.firestore_repository import FirestoreRepository
 from ..utils.time_utils import get_current_time
 from ..config import get_config
-from ..slack.message_builder import MessageBuilder
 
 class WarningService:
-    """勤務時間・休憩時間の警告を管理するサービス"""
+    """Service for managing work/break time warnings"""
     
     def __init__(self, repository: FirestoreRepository):
         self.repository = repository
         self.config = get_config()
-        # 設定ファイルから警告閾値を読み込み
-        self.long_work_warning_minutes = self.config.attendance_alerts.long_work_warning_minutes
-        self.long_break_warning_minutes = self.config.attendance_alerts.long_break_warning_minutes
+        # Get warning thresholds from config
+        self.long_work_warning_minutes = getattr(self.config.attendance_alerts, 'long_work_warning_minutes', 480)  # 8 hours default
+        self.long_break_warning_minutes = getattr(self.config.attendance_alerts, 'long_break_warning_minutes', 60)  # 1 hour default
         
     def check_long_working_users(self, team_id: str = None) -> List[Dict[str, Any]]:
         """
-        長時間勤務中のユーザーをチェック
+        Check for users who have been working too long
         
         Args:
-            team_id: チームID (Slackワークスペース)
+            team_id: Optional team ID to filter by workspace
             
         Returns:
-            List[Dict[str, Any]]: 長時間勤務中のユーザー情報リスト
+            List[Dict[str, Any]]: List of users working too long
         """
-        # アクティブな勤怠記録を取得
+        # Get active attendances
         active_records = self.repository.get_all_active_attendances(team_id=team_id)
         
-        # 現在時刻を取得
+        # Get current time
         current_time = get_current_time()
         
-        # 警告対象のユーザーリスト
+        # Users to warn
         warning_users = []
         
         for record in active_records:
-            # 休憩中ではないユーザーが対象
+            # Skip users who are on break
             is_on_break = False
             if record.break_periods and not record.break_periods[-1].end_time:
                 is_on_break = True
                 
             if not is_on_break:
-                # 勤務開始からの経過時間を計算
+                # Calculate work duration
                 work_duration = (current_time - record.start_time).total_seconds() / 60
-                # 休憩時間を差し引く
+                # Subtract break time
                 actual_work_duration = work_duration - record.get_total_break_time()
                 
-                # 設定された閾値を超えている場合は警告対象
+                # Check if duration exceeds threshold
                 if actual_work_duration >= self.long_work_warning_minutes:
                     warning_users.append({
                         'user_id': record.user_id,
@@ -63,31 +62,31 @@ class WarningService:
     
     def check_long_break_users(self, team_id: str = None) -> List[Dict[str, Any]]:
         """
-        長時間休憩中のユーザーをチェック
+        Check for users who have been on break too long
         
         Args:
-            team_id: チームID (Slackワークスペース)
+            team_id: Optional team ID to filter by workspace
             
         Returns:
-            List[Dict[str, Any]]: 長時間休憩中のユーザー情報リスト
+            List[Dict[str, Any]]: List of users on break too long
         """
-        # アクティブな勤怠記録を取得
+        # Get active attendances
         active_records = self.repository.get_all_active_attendances(team_id=team_id)
         
-        # 現在時刻を取得
+        # Get current time
         current_time = get_current_time()
         
-        # 警告対象のユーザーリスト
+        # Users to warn
         warning_users = []
         
         for record in active_records:
-            # 休憩中のユーザーが対象
+            # Only check users who are on break
             if record.break_periods and not record.break_periods[-1].end_time:
-                # 休憩開始からの経過時間を計算
+                # Calculate break duration
                 break_start_time = record.break_periods[-1].start_time
                 break_duration = (current_time - break_start_time).total_seconds() / 60
                 
-                # 設定された閾値を超えている場合は警告対象
+                # Check if duration exceeds threshold
                 if break_duration >= self.long_break_warning_minutes:
                     warning_users.append({
                         'user_id': record.user_id,
@@ -102,69 +101,57 @@ class WarningService:
     
     def get_all_warnings(self, team_id: str = None) -> List[Dict[str, Any]]:
         """
-        すべての警告対象ユーザーを取得
+        Get all users who need warnings
         
         Args:
-            team_id: チームID (Slackワークスペース)
+            team_id: Optional team ID to filter by workspace
             
         Returns:
-            List[Dict[str, Any]]: 警告対象のユーザー情報リスト
+            List[Dict[str, Any]]: List of all users needing warnings
         """
-        # 長時間勤務のユーザーを取得
+        # Get both types of warnings
         long_work_users = self.check_long_working_users(team_id=team_id)
-        
-        # 長時間休憩のユーザーを取得
         long_break_users = self.check_long_break_users(team_id=team_id)
         
-        # 両方のリストを結合
+        # Combine the lists
         return long_work_users + long_break_users
     
     def format_warning_message(self, warning_info: Dict[str, Any]) -> str:
         """
-        警告メッセージを整形
+        Format a warning message as plain text
         
         Args:
-            warning_info: 警告情報
+            warning_info: Warning information
             
         Returns:
-            str: 整形された警告メッセージ
+            str: Formatted warning message
         """
-        # MessageBuilderのメソッドを使用するようにリファクタリング
-        blocks = MessageBuilder.create_warning_message(
-            warning_type=warning_info['warning_type'],
-            user_id=warning_info['user_id'],
-            user_name=warning_info['user_name'],
-            duration=warning_info['duration']
-        )
+        # Format duration
+        hours = int(warning_info['duration'] // 60)
+        minutes = int(warning_info['duration'] % 60)
+        time_str = f"{hours}時間{minutes}分" if hours > 0 else f"{minutes}分"
         
-        # テキストメッセージを生成（簡易版）
+        # Create appropriate message by warning type
         if warning_info['warning_type'] == 'long_work':
-            hours = int(warning_info['duration'] // 60)
-            minutes = int(warning_info['duration'] % 60)
-            time_str = f"{hours}時間{minutes}分" if hours > 0 else f"{minutes}分"
-            
             return (
                 f"<@{warning_info['user_id']}> さん、勤務時間が {time_str} を超えました。\n"
                 "長時間の勤務は健康に影響することがあります。\n"
                 "必要に応じて休憩を取るか、退勤処理を行うことをお勧めします。 `/punch_out` コマンドで退勤できます。"
             )
         elif warning_info['warning_type'] == 'long_break':
-            hours = int(warning_info['duration'] // 60)
-            minutes = int(warning_info['duration'] % 60)
-            time_str = f"{hours}時間{minutes}分" if hours > 0 else f"{minutes}分"
-            
             return (
                 f"<@{warning_info['user_id']}> さん、休憩時間が {time_str} を超えました。\n"
                 "休憩終了の処理を忘れていませんか？ `/break_end` コマンドで休憩終了の処理ができます。"
             )
         
+        # Fallback
         return "警告が発生しています。管理者に確認してください。"
     
     def is_alert_enabled(self) -> bool:
         """
-        警告機能が有効かどうかを確認
+        Check if alerts are enabled in configuration
         
         Returns:
-            bool: 警告機能が有効ならTrue
+            bool: True if alerts are enabled
         """
         return getattr(self.config.attendance_alerts, 'enabled', False)

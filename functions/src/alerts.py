@@ -7,134 +7,127 @@ from .services.warning_service import WarningService
 from .config import get_config
 from .slack.message_builder import MessageBuilder
 
-def create_alert_function(repository: FirestoreRepository, client: WebClient = None):
+# Define the alert function directly (not inside another function)
+@scheduler_fn.on_schedule(schedule="every 30 minutes")
+def attendance_alerts_function(event: scheduler_fn.ScheduledEvent) -> None:
     """
-    勤怠警告チェック関数を作成
+    Scheduled function that checks for long work/break periods and sends warnings
     
     Args:
-        repository: Firestoreレポジトリ
-        client: Slackクライアント（テスト用に注入可能）
-    
-    Returns:
-        function: Cloud Function
+        event: Schedule event context
     """
-    
-    config = get_config()
-    warning_service = WarningService(repository)
-    
-    @scheduler_fn.on_schedule(schedule="every {interval} minutes".format(
-        interval=getattr(config.attendance_alerts, 'check_interval_minutes', 30)
-    ))
-    def attendance_alerts_function(event: scheduler_fn.ScheduledEvent) -> None:
-        """
-        定期的に実行され、長時間勤務・長時間休憩のユーザーに警告を送信する
+    try:
+        # Get configuration
+        config = get_config()
         
-        Args:
-            event: スケジュールイベント
-        """
-        try:
-            # 警告機能が無効の場合は処理しない
-            if not warning_service.is_alert_enabled():
-                print("Attendance alerts are disabled in configuration")
-                return
+        # Check if alerts are enabled
+        if not getattr(config.attendance_alerts, 'enabled', False):
+            print("Attendance alerts are disabled in configuration")
+            return
+            
+        print("Running attendance alerts check...")
+        
+        # Initialize repository and service
+        repository = FirestoreRepository(
+            project_id=config.firebase.project_id,
+            credentials_path=config.firebase.credentials_path
+        )
+        
+        # Initialize warning service
+        warning_service = WarningService(repository)
+        
+        # Get all workspaces (for future multi-workspace support)
+        workspaces = repository.get_all_workspaces()
+        
+        for workspace in workspaces:
+            team_id = workspace.get('team_id')
+            if not team_id:
+                continue
                 
-            print("Running attendance alerts check...")
+            # Get warnings for this workspace
+            warnings = warning_service.get_all_warnings(team_id=team_id)
             
-            # すべてのワークスペースの警告対象者を取得
-            # 将来的に複数ワークスペース対応を考慮
-            workspaces = repository.get_all_workspaces()
+            if not warnings:
+                print(f"No warnings for workspace {team_id}")
+                continue
             
-            for workspace in workspaces:
-                team_id = workspace.get('team_id')
-                if not team_id:
-                    continue
+            print(f"Found {len(warnings)} warnings for workspace {team_id}")
+            
+            # Initialize Slack client
+            slack_client = WebClient(token=config.slack.bot_token)
+            
+            # Send warnings to each user
+            for warning in warnings:
+                try:
+                    # Format warning message (text)
+                    text_message = warning_service.format_warning_message(warning)
                     
-                # 警告対象ユーザーを取得
-                warnings = warning_service.get_all_warnings(team_id=team_id)
-                
-                if not warnings:
-                    print(f"No warnings for workspace {team_id}")
-                    continue
-                
-                print(f"Found {len(warnings)} warnings for workspace {team_id}")
-                
-                # Slackクライアントを初期化
-                slack_client = client or WebClient(token=config.slack.bot_token)
-                
-                # 各ユーザーに警告を送信
-                for warning in warnings:
-                    try:
-                        # 警告メッセージを整形 (テキスト用)
-                        text_message = warning_service.format_warning_message(warning)
-                        
-                        # 警告ブロックを生成 (リッチメッセージ用)
-                        blocks = MessageBuilder.create_warning_message(
-                            warning_type=warning['warning_type'],
-                            user_id=warning['user_id'],
-                            user_name=warning['user_name'],
-                            duration=warning['duration']
-                        )
-                        
-                        # DMで警告を送信
-                        slack_client.chat_postMessage(
-                            channel=warning['user_id'],
-                            text=text_message,
-                            blocks=blocks
-                        )
-                        
-                        print(f"Sent warning to user {warning['user_id']} for {warning['warning_type']}")
-                    except Exception as e:
-                        print(f"Error sending warning to user {warning['user_id']}: {str(e)}")
-            
-            print("Attendance alerts check completed")
-        except Exception as e:
-            print(f"Error in attendance_alerts_function: {str(e)}")
-    
-    return attendance_alerts_function
+                    # Generate warning blocks (rich message)
+                    blocks = MessageBuilder.create_warning_message(
+                        warning_type=warning['warning_type'],
+                        user_id=warning['user_id'],
+                        user_name=warning['user_name'],
+                        duration=warning['duration']
+                    )
+                    
+                    # Send DM with warning
+                    slack_client.chat_postMessage(
+                        channel=warning['user_id'],
+                        text=text_message,
+                        blocks=blocks
+                    )
+                    
+                    print(f"Sent warning to user {warning['user_id']} for {warning['warning_type']}")
+                except Exception as e:
+                    print(f"Error sending warning to user {warning['user_id']}: {str(e)}")
+        
+        print("Attendance alerts check completed")
+    except Exception as e:
+        print(f"Error in attendance_alerts_function: {str(e)}")
 
-# 手動実行用のHTTPエンドポイント（デバッグとテスト用）
+# Manual execution endpoint (for debugging and testing)
 @https_fn.on_request()
 def manual_attendance_alerts(request: https_fn.Request) -> https_fn.Response:
     """
-    手動で警告チェックを実行するためのエンドポイント
-    デバッグ・テスト目的のみで使用
+    HTTP endpoint to manually trigger attendance alerts check
+    For debugging and testing purposes
     
     Args:
-        request: HTTPリクエスト
+        request: HTTP request
         
     Returns:
-        Response: チェック結果
+        Response: Check results
     """
     try:
         config = get_config()
         
-        # APIキーによる認証（簡易的なセキュリティ）
+        # Simple API key authentication (optional)
         api_key = request.headers.get('X-API-Key')
-        if not api_key or api_key != getattr(config, 'debug_api_key', ''):
+        if api_key and api_key != getattr(config, 'debug_api_key', ''):
             return https_fn.Response(
                 json.dumps({"error": "Unauthorized"}),
                 status=401,
                 mimetype='application/json'
             )
         
-        # Firestoreレポジトリを初期化
+        # Initialize repository and service
         repository = FirestoreRepository(
             project_id=config.firebase.project_id,
             credentials_path=config.firebase.credentials_path
         )
         
-        # 警告サービスを初期化
+        # Initialize warning service
         warning_service = WarningService(repository)
         
-        # すべての警告を取得
+        # Get all warnings across all workspaces
         warnings = warning_service.get_all_warnings()
         
-        # 結果を返す
+        # Return results
         return https_fn.Response(
             json.dumps({
                 "success": True,
-                "warnings": len(warnings),
-                "details": [
+                "warnings_count": len(warnings),
+                "warnings": [
                     {
                         "user_id": w["user_id"],
                         "user_name": w["user_name"],
