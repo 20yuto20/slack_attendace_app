@@ -6,7 +6,7 @@ from firebase_admin import initialize_app, credentials
 
 from src.slack.app import create_slack_bot_function
 from src.warmup import warmup_function  # Import the warmup function
-# We no longer need to import alerts here since they're directly defined with decorators
+from src.alerts import manual_attendance_alerts, attendance_alerts_function  # Explicitly import alert functions
 from src.repositories.firestore_repository import FirestoreRepository
 from src.config import get_config
 
@@ -65,6 +65,7 @@ def slack_bot_function(request: https_fn.Request) -> https_fn.Response:
             mimetype='application/json'
         )
 
-# Note: The other functions (attendance_alerts_function, manual_attendance_alerts, warmup_function)
-# are defined in their respective modules with the appropriate decorators
-# and will be automatically detected by Firebase Functions
+# Re-export the alert functions and warmup function
+manual_attendance_alerts = manual_attendance_alerts
+attendance_alerts_function = attendance_alerts_function
+warmup_function = warmup_function
