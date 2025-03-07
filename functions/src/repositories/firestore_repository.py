@@ -1,7 +1,7 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from src.models.attendance import Attendance  # 絶対パスに修正
@@ -18,6 +18,7 @@ class FirestoreRepository:
                 })
             self.db = firestore.client()
             self.attendance_collection = self.db.collection('attendance')
+            self.installations_collection = self.db.collection('slack_installations')
         except Exception as e:
             print(f"Firebase initialization error: {str(e)}")
             raise
@@ -194,3 +195,73 @@ class FirestoreRepository:
             'daily_stats': daily_stats,
             'record_count': len(records)
         }
+    
+    def get_all_workspaces(self) -> List[Dict[str, Any]]:
+        """
+        システムに登録されている全てのワークスペース情報を取得する
+        
+        Returns:
+            List[Dict[str, Any]]: ワークスペース情報のリスト
+        """
+        try:
+            # slack_installationsから全チームIDを取得する方法1:
+            # ユーザーIDがNullのインストールレコードのみを対象にする
+            installations = self.installations_collection.where(
+                filter=FieldFilter("user_id", "==", None)
+            ).get()
+            
+            # 重複排除のためのセット
+            team_ids = set()
+            workspaces = []
+            
+            for doc in installations:
+                data = doc.to_dict()
+                team_id = data.get("team_id")
+                if team_id and team_id not in team_ids:
+                    team_ids.add(team_id)
+                    workspaces.append({
+                        "team_id": team_id,
+                        "enterprise_id": data.get("enterprise_id"),
+                        "is_enterprise_install": data.get("is_enterprise_install", False)
+                    })
+            
+            # 方法2: バックアップとして、勤怠レコードからもチームIDを収集
+            # 特に勤怠レコードがあるが、installation情報が完全でない場合に有効
+            if not workspaces:
+                # 全勤怠記録からユニークなteam_id値を取得
+                # これは非効率なため、installationsが取得できない場合の
+                # フォールバックとしてのみ使用
+                attendances = self.attendance_collection.limit(1000).get()
+                for doc in attendances:
+                    data = doc.to_dict()
+                    team_id = data.get("team_id")
+                    if team_id and team_id not in team_ids:
+                        team_ids.add(team_id)
+                        workspaces.append({"team_id": team_id})
+            
+            return workspaces
+        except Exception as e:
+            print(f"Error retrieving workspaces: {str(e)}")
+            # エラー時は空リストを返す
+            return []
+    
+    def get_attendance_by_id(self, doc_id: str) -> Optional[Attendance]:
+        """
+        ドキュメントIDで勤怠記録を取得
+        
+        Args:
+            doc_id: ドキュメントID
+            
+        Returns:
+            Optional[Attendance]: 勤怠記録オブジェクト、見つからない場合はNone
+        """
+        try:
+            doc = self.attendance_collection.document(doc_id).get()
+            if not doc.exists:
+                return None
+            
+            attendance = self._convert_to_attendance(doc)
+            return attendance
+        except Exception as e:
+            print(f"Error retrieving attendance by ID: {str(e)}")
+            return None
