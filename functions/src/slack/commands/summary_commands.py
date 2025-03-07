@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Dict, Any, List
+import json
 
 from slack_bolt import App
 # from slack_sdk import WebClient
@@ -35,6 +36,15 @@ class SummaryCommands:
 
             user_id = body["user"]["id"]
             user_name = body["user"]["name"]
+            
+            # メタデータからチームIDを取得
+            try:
+                metadata = view.get("private_metadata", "{}")
+                meta_dict = json.loads(metadata)
+                team_id = meta_dict.get("team_id", "")
+            except:
+                team_id = ""
+                logger.error("Failed to parse private_metadata")
 
             # モーダル上の values を取得
             year_str = view["state"]["values"]["year_block"]["year_select"]["selected_option"]["value"]
@@ -44,11 +54,12 @@ class SummaryCommands:
             year = int(year_str)
             month = int(month_str)
 
-            # 取得した年・月で月次サマリーを作成
+            # 取得した年・月で月次サマリーを作成（ワークスペース制限つき）
             summary = self.summary_service.get_monthly_summary(
                 user_id=user_id,
                 year=year,
-                month=month
+                month=month,
+                team_id=team_id
             )
 
             # 表示用のブロックを生成
@@ -80,6 +91,10 @@ class SummaryCommands:
         ack()
 
         trigger_id = command["trigger_id"]
+        team_id = command.get("team_id", "")
+        
+        # チームIDをメタデータとして保存
+        private_metadata = json.dumps({"team_id": team_id})
 
         # モーダルのレイアウト定義
         modal_view = {
@@ -97,6 +112,7 @@ class SummaryCommands:
                 "type": "plain_text",
                 "text": "キャンセル"
             },
+            "private_metadata": private_metadata,
             "blocks": [
                 {
                     "type": "section",
@@ -170,6 +186,8 @@ class SummaryCommands:
             "• `/break_begin`: 休憩開始\n"
             "• `/break_end`: 休憩終了\n"
             "• `/summary`: 勤怠サマリー\n"
+            "• `/allstatus`: 従業員の勤怠状況一覧\n"
+            "• `/mystatus`: 自分の勤怠状況確認\n"
             "• `/help`: 使い方ガイドの表示\n\n"
             "こちらのガイドサイトにも詳しい使い方が掲載されています。\n"
             "<https://aerial-lentil-c95.notion.site/bot-164d7101a27680d98fbae0385153a637>\n\n"
@@ -191,12 +209,14 @@ class SummaryCommands:
     
         user_id = body["user"]["id"]
         user_name = body["user"]["name"]
+        team_id = body.get("team", {}).get("id", "")  # チームIDを取得
 
         filename, csv_content = self.summary_service.generate_csv(
             user_id=user_id,
             user_name=user_name,
             year=year,
-            month=month
+            month=month,
+            team_id=team_id  # チームIDを渡す
         )
     
         try:

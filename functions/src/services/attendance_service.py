@@ -9,9 +9,9 @@ class AttendanceService:
     def __init__(self, repository: FirestoreRepository):
         self.repository = repository
 
-    def punch_in(self, user_id: str, user_name: str) -> Tuple[bool, str, Optional[datetime]]:
+    def punch_in(self, user_id: str, user_name: str, team_id: str) -> Tuple[bool, str, Optional[datetime]]:
         """出勤処理"""
-        active_attendance = self.repository.get_active_attendance(user_id)
+        active_attendance = self.repository.get_active_attendance(user_id, team_id)
         if active_attendance:
             return False, "既に出勤済みです。", None
 
@@ -19,14 +19,15 @@ class AttendanceService:
         attendance = Attendance(
             user_id=user_id,
             user_name=user_name,
+            team_id=team_id,  # ワークスペースIDを追加
             start_time=current_time
         )
         self.repository.create_attendance(attendance)
         return True, "出勤を記録しました。", current_time
 
-    def punch_out(self, user_id: str) -> Tuple[bool, str, Optional[Attendance]]:
+    def punch_out(self, user_id: str, team_id: str) -> Tuple[bool, str, Optional[Attendance]]:
         """退勤処理"""
-        active_attendance = self.repository.get_active_attendance(user_id)
+        active_attendance = self.repository.get_active_attendance(user_id, team_id)
         if not active_attendance:
             return False, "出勤記録が見つかりません。", None
 
@@ -37,9 +38,9 @@ class AttendanceService:
         self.repository.update_attendance(active_attendance)
         return True, "退勤を記録しました。", active_attendance
 
-    def start_break(self, user_id: str) -> Tuple[bool, str, Optional[datetime]]:
+    def start_break(self, user_id: str, team_id: str) -> Tuple[bool, str, Optional[datetime]]:
         """休憩開始処理"""
-        active_attendance = self.repository.get_active_attendance(user_id)
+        active_attendance = self.repository.get_active_attendance(user_id, team_id)
         if not active_attendance:
             return False, "出勤記録が見つかりません。", None
 
@@ -51,9 +52,9 @@ class AttendanceService:
         self.repository.update_attendance(active_attendance)
         return True, "休憩を開始しました。", current_time
 
-    def end_break(self, user_id: str) -> Tuple[bool, str, Optional[Tuple[datetime, float]]]:
+    def end_break(self, user_id: str, team_id: str) -> Tuple[bool, str, Optional[Tuple[datetime, float]]]:
         """休憩終了処理"""
-        active_attendance = self.repository.get_active_attendance(user_id)
+        active_attendance = self.repository.get_active_attendance(user_id, team_id)
         if not active_attendance:
             return False, "出勤記録が見つかりません。", None
 

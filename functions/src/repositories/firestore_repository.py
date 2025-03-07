@@ -31,16 +31,25 @@ class FirestoreRepository:
         attendance.doc_id = doc_ref.id  # ★ 生成したIDをAttendanceにセット
         doc_ref.set(attendance.to_dict())
 
-    def get_active_attendance(self, user_id: str) -> Optional[Attendance]:
+    def get_active_attendance(self, user_id: str, team_id: str = None) -> Optional[Attendance]:
         """
         ユーザーのアクティブな（終了していない）勤怠記録を取得
+        
+        Args:
+            user_id: ユーザーID
+            team_id: チームID (Slackワークスペース)
         """
         query = (
             self.attendance_collection
-            .where(filter=firestore.FieldFilter("user_id", "==", user_id))
-            .where(filter=firestore.FieldFilter("end_time", "==", None))
-            .limit(1)
+            .where(filter=FieldFilter("user_id", "==", user_id))
+            .where(filter=FieldFilter("end_time", "==", None))
         )
+        
+        # team_idが指定されている場合はさらにフィルタリング
+        if team_id:
+            query = query.where(filter=FieldFilter("team_id", "==", team_id))
+            
+        query = query.limit(1)
         docs = query.get()
         
         for doc in docs:
@@ -48,6 +57,36 @@ class FirestoreRepository:
             attendance.doc_id = doc.id  # ★ ドキュメントIDを保持
             return attendance
         return None
+    
+    def get_all_active_attendances(self, team_id: str = None) -> List[Attendance]:
+        """
+        すべてのアクティブな（終了していない）勤怠記録を取得
+        
+        Args:
+            team_id: チームID (Slackワークスペース)
+        
+        Returns:
+            List[Attendance]: アクティブな勤怠記録のリスト
+        """
+        query = (
+            self.attendance_collection
+            .where(filter=FieldFilter("end_time", "==", None))
+        )
+        
+        # team_idが指定されている場合はワークスペースでフィルタリング
+        if team_id:
+            query = query.where(filter=FieldFilter("team_id", "==", team_id))
+            
+        query = query.limit(100)  # 上限を設定（必要に応じて調整）
+        docs = query.get()
+        
+        active_attendances = []
+        for doc in docs:
+            attendance = Attendance.from_dict(doc.to_dict())
+            attendance.doc_id = doc.id
+            active_attendances.append(attendance)
+        
+        return active_attendances
 
     def update_attendance(self, attendance: Attendance) -> None:
         """
@@ -65,6 +104,7 @@ class FirestoreRepository:
         user_id: str, 
         start_date: datetime, 
         end_date: datetime,
+        team_id: str = None,
         batch_size: int = 100
     ) -> List[Attendance]:
         """
@@ -76,9 +116,13 @@ class FirestoreRepository:
                 .where(filter=FieldFilter("user_id", "==", user_id))
                 .where(filter=FieldFilter("start_time", ">=", start_date.isoformat()))
                 .where(filter=FieldFilter("start_time", "<=", end_date.isoformat()))
-                .order_by("start_time")
-                .limit(batch_size)
             )
+            
+            # team_idが指定されている場合はワークスペースでフィルタリング
+            if team_id:
+                query = query.where(filter=FieldFilter("team_id", "==", team_id))
+                
+            query = query.order_by("start_time").limit(batch_size)
             
             records = []
             docs = query.get()
@@ -115,12 +159,13 @@ class FirestoreRepository:
         self, 
         user_id: str, 
         start_date: datetime, 
-        end_date: datetime
+        end_date: datetime,
+        team_id: str = None
     ) -> Dict[str, Any]:
         """
         指定期間の勤怠統計を取得
         """
-        records = self.get_attendance_by_period(user_id, start_date, end_date)
+        records = self.get_attendance_by_period(user_id, start_date, end_date, team_id)
         
         total_working_time = 0
         total_break_time = 0

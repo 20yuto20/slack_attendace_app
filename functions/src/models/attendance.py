@@ -19,6 +19,7 @@ class Attendance:
     doc_id: Optional[str] = None  # ★ ドキュメントIDを保持するフィールドを追加
     user_id: str = ""
     user_name: str = ""
+    team_id: str = ""  # ★ ワークスペースIDを追加
     start_time: datetime = None
     end_time: Optional[datetime] = None
     break_periods: List[BreakPeriod] = field(default_factory=list)
@@ -47,6 +48,7 @@ class Attendance:
         data = {
             "user_id": self.user_id,
             "user_name": self.user_name,
+            "team_id": self.team_id,  # ★ team_idを追加
             "start_time": self.start_time.isoformat(),
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "break_periods": [
@@ -84,6 +86,7 @@ class Attendance:
             doc_id=data.get("doc_id"),  # to_dict内でdoc_idを格納している場合のみ有効
             user_id=data.get("user_id", ""),
             user_name=data.get("user_name", ""),
+            team_id=data.get("team_id", ""),  # ★ team_idを追加
             start_time=datetime.fromisoformat(data["start_time"]),
             end_time=datetime.fromisoformat(data["end_time"]) if data.get("end_time") else None,
             break_periods=break_periods,
