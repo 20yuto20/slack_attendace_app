@@ -15,6 +15,6 @@ application:
   
 attendance_alerts:
   enabled: true
-  long_work_warning_minutes: 1  # 8時間以上勤務でアラート
-  long_break_warning_minutes: 1  # 1時間以上休憩でアラート
+  long_work_warning_minutes: 5  # 8時間以上勤務でアラート
+  long_break_warning_minutes: 5  # 1時間以上休憩でアラート
   check_interval_minutes: 30     # 30分ごとにチェック
