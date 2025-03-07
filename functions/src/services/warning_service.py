@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 from ..models.attendance import Attendance
 from ..repositories.firestore_repository import FirestoreRepository

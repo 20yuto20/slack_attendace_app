@@ -1,160 +1,147 @@
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple, Optional
+import json
+from firebase_functions import https_fn, scheduler_fn
+from slack_sdk import WebClient
 
-from ..models.attendance import Attendance
-from ..repositories.firestore_repository import FirestoreRepository
-from ..utils.time_utils import get_current_time
-from ..config import get_config
+from .repositories.firestore_repository import FirestoreRepository
+from .services.warning_service import WarningService
+from .config import get_config
 
-class WarningService:
-    """勤務時間・休憩時間の警告を管理するサービス"""
+def create_alert_function(repository: FirestoreRepository, client: WebClient = None):
+    """
+    勤怠警告チェック関数を作成
     
-    def __init__(self, repository: FirestoreRepository):
-        self.repository = repository
-        self.config = get_config()
-        # 設定ファイルから警告閾値を読み込み
-        self.long_work_warning_minutes = self.config.attendance_alerts.long_work_warning_minutes
-        self.long_break_warning_minutes = self.config.attendance_alerts.long_break_warning_minutes
-        
-    def check_long_working_users(self, team_id: str = None) -> List[Dict[str, Any]]:
+    Args:
+        repository: Firestoreレポジトリ
+        client: Slackクライアント（テスト用に注入可能）
+    
+    Returns:
+        function: Cloud Function
+    """
+    
+    config = get_config()
+    warning_service = WarningService(repository)
+    
+    @scheduler_fn.on_schedule(schedule="every {interval} minutes".format(
+        interval=getattr(config.attendance_alerts, 'check_interval_minutes', 30)
+    ))
+    def attendance_alerts_function(event: scheduler_fn.ScheduledEvent) -> None:
         """
-        長時間勤務中のユーザーをチェック
+        定期的に実行され、長時間勤務・長時間休憩のユーザーに警告を送信する
         
         Args:
-            team_id: チームID (Slackワークスペース)
-            
-        Returns:
-            List[Dict[str, Any]]: 長時間勤務中のユーザー情報リスト
+            event: スケジュールイベント
         """
-        # アクティブな勤怠記録を取得
-        active_records = self.repository.get_all_active_attendances(team_id=team_id)
-        
-        # 現在時刻を取得
-        current_time = get_current_time()
-        
-        # 警告対象のユーザーリスト
-        warning_users = []
-        
-        for record in active_records:
-            # 休憩中ではないユーザーが対象
-            is_on_break = False
-            if record.break_periods and not record.break_periods[-1].end_time:
-                is_on_break = True
+        try:
+            # 警告機能が無効の場合は処理しない
+            if not warning_service.is_alert_enabled():
+                print("Attendance alerts are disabled in configuration")
+                return
                 
-            if not is_on_break:
-                # 勤務開始からの経過時間を計算
-                work_duration = (current_time - record.start_time).total_seconds() / 60
-                # 休憩時間を差し引く
-                actual_work_duration = work_duration - record.get_total_break_time()
+            print("Running attendance alerts check...")
+            
+            # すべてのワークスペースの警告対象者を取得
+            # 将来的に複数ワークスペース対応を考慮
+            workspaces = repository.get_all_workspaces()
+            
+            for workspace in workspaces:
+                team_id = workspace.get('team_id')
+                if not team_id:
+                    continue
+                    
+                # 警告対象ユーザーを取得
+                warnings = warning_service.get_all_warnings(team_id=team_id)
                 
-                # 設定された閾値を超えている場合は警告対象
-                if actual_work_duration >= self.long_work_warning_minutes:
-                    warning_users.append({
-                        'user_id': record.user_id,
-                        'user_name': record.user_name,
-                        'team_id': record.team_id,
-                        'duration': actual_work_duration,
-                        'warning_type': 'long_work',
-                        'doc_id': record.doc_id
-                    })
-        
-        return warning_users
-    
-    def check_long_break_users(self, team_id: str = None) -> List[Dict[str, Any]]:
-        """
-        長時間休憩中のユーザーをチェック
-        
-        Args:
-            team_id: チームID (Slackワークスペース)
-            
-        Returns:
-            List[Dict[str, Any]]: 長時間休憩中のユーザー情報リスト
-        """
-        # アクティブな勤怠記録を取得
-        active_records = self.repository.get_all_active_attendances(team_id=team_id)
-        
-        # 現在時刻を取得
-        current_time = get_current_time()
-        
-        # 警告対象のユーザーリスト
-        warning_users = []
-        
-        for record in active_records:
-            # 休憩中のユーザーが対象
-            if record.break_periods and not record.break_periods[-1].end_time:
-                # 休憩開始からの経過時間を計算
-                break_start_time = record.break_periods[-1].start_time
-                break_duration = (current_time - break_start_time).total_seconds() / 60
+                if not warnings:
+                    print(f"No warnings for workspace {team_id}")
+                    continue
                 
-                # 設定された閾値を超えている場合は警告対象
-                if break_duration >= self.long_break_warning_minutes:
-                    warning_users.append({
-                        'user_id': record.user_id,
-                        'user_name': record.user_name,
-                        'team_id': record.team_id,
-                        'duration': break_duration,
-                        'warning_type': 'long_break',
-                        'doc_id': record.doc_id
-                    })
-        
-        return warning_users
+                print(f"Found {len(warnings)} warnings for workspace {team_id}")
+                
+                # Slackクライアントを初期化
+                slack_client = client or WebClient(token=config.slack.bot_token)
+                
+                # 各ユーザーに警告を送信
+                for warning in warnings:
+                    try:
+                        # 警告メッセージを整形
+                        message = warning_service.format_warning_message(warning)
+                        
+                        # DMで警告を送信
+                        slack_client.chat_postMessage(
+                            channel=warning['user_id'],
+                            text=message
+                        )
+                        
+                        print(f"Sent warning to user {warning['user_id']} for {warning['warning_type']}")
+                    except Exception as e:
+                        print(f"Error sending warning to user {warning['user_id']}: {str(e)}")
+            
+            print("Attendance alerts check completed")
+        except Exception as e:
+            print(f"Error in attendance_alerts_function: {str(e)}")
     
-    def get_all_warnings(self, team_id: str = None) -> List[Dict[str, Any]]:
-        """
-        すべての警告対象ユーザーを取得
-        
-        Args:
-            team_id: チームID (Slackワークスペース)
-            
-        Returns:
-            List[Dict[str, Any]]: 警告対象のユーザー情報リスト
-        """
-        # 長時間勤務のユーザーを取得
-        long_work_users = self.check_long_working_users(team_id=team_id)
-        
-        # 長時間休憩のユーザーを取得
-        long_break_users = self.check_long_break_users(team_id=team_id)
-        
-        # 両方のリストを結合
-        return long_work_users + long_break_users
+    return attendance_alerts_function
+
+# 手動実行用のHTTPエンドポイント（デバッグとテスト用）
+@https_fn.on_request()
+def manual_attendance_alerts(request: https_fn.Request) -> https_fn.Response:
+    """
+    手動で警告チェックを実行するためのエンドポイント
+    デバッグ・テスト目的のみで使用
     
-    def format_warning_message(self, warning_info: Dict[str, Any]) -> str:
-        """
-        警告メッセージを整形
+    Args:
+        request: HTTPリクエスト
         
-        Args:
-            warning_info: 警告情報
-            
-        Returns:
-            str: 整形された警告メッセージ
-        """
-        if warning_info['warning_type'] == 'long_work':
-            hours = int(warning_info['duration'] // 60)
-            minutes = int(warning_info['duration'] % 60)
-            time_str = f"{hours}時間{minutes}分" if hours > 0 else f"{minutes}分"
-            
-            return (
-                f"<@{warning_info['user_id']}> さん、勤務時間が {time_str} を超えました。\n"
-                "長時間の勤務は健康に影響することがあります。\n"
-                "必要に応じて休憩を取るか、退勤処理を行うことをお勧めします。 `/punch_out` コマンドで退勤できます。"
-            )
-        elif warning_info['warning_type'] == 'long_break':
-            hours = int(warning_info['duration'] // 60)
-            minutes = int(warning_info['duration'] % 60)
-            time_str = f"{hours}時間{minutes}分" if hours > 0 else f"{minutes}分"
-            
-            return (
-                f"<@{warning_info['user_id']}> さん、休憩時間が {time_str} を超えました。\n"
-                "休憩終了の処理を忘れていませんか？ `/break_end` コマンドで休憩終了の処理ができます。"
+    Returns:
+        Response: チェック結果
+    """
+    try:
+        config = get_config()
+        
+        # APIキーによる認証（簡易的なセキュリティ）
+        api_key = request.headers.get('X-API-Key')
+        if not api_key or api_key != config.get('debug_api_key', ''):
+            return https_fn.Response(
+                json.dumps({"error": "Unauthorized"}),
+                status=401,
+                mimetype='application/json'
             )
         
-        return "警告が発生しています。管理者に確認してください。"
-    
-    def is_alert_enabled(self) -> bool:
-        """
-        警告機能が有効かどうかを確認
+        # Firestoreレポジトリを初期化
+        repository = FirestoreRepository(
+            project_id=config.firebase.project_id,
+            credentials_path=config.firebase.credentials_path
+        )
         
-        Returns:
-            bool: 警告機能が有効ならTrue
-        """
-        return getattr(self.config.attendance_alerts, 'enabled', False)
+        # 警告サービスを初期化
+        warning_service = WarningService(repository)
+        
+        # すべての警告を取得
+        warnings = warning_service.get_all_warnings()
+        
+        # 結果を返す
+        return https_fn.Response(
+            json.dumps({
+                "success": True,
+                "warnings": len(warnings),
+                "details": [
+                    {
+                        "user_id": w["user_id"],
+                        "user_name": w["user_name"],
+                        "warning_type": w["warning_type"],
+                        "duration": w["duration"]
+                    } for w in warnings
+                ]
+            }),
+            status=200,
+            mimetype='application/json'
+        )
+    except Exception as e:
+        return https_fn.Response(
+            json.dumps({
+                "error": "Internal Server Error",
+                "message": str(e)
+            }),
+            status=500,
+            mimetype='application/json'
+        )

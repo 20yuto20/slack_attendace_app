@@ -477,3 +477,75 @@ class MessageBuilder:
             })
         
         return blocks
+    
+    @staticmethod
+    def create_warning_message(warning_type: str, user_id: str, user_name: str, duration: float) -> List[Dict[str, Any]]:
+        """
+        自動警告メッセージを作成
+        
+        Args:
+            warning_type: 警告タイプ ('long_work' または 'long_break')
+            user_id: 対象ユーザーID
+            user_name: 対象ユーザー名
+            duration: 経過時間（分）
+            
+        Returns:
+            List[Dict[str, Any]]: Slackブロックメッセージ
+        """
+        hours = int(duration // 60)
+        mins = int(duration % 60)
+        duration_str = f"{hours}時間{mins}分" if hours > 0 else f"{mins}分"
+        
+        if warning_type == "long_work":
+            title = "🚨 長時間勤務の警告"
+            message = f"<@{user_id}> さんが {duration_str} 以上勤務しています。"
+            action_text = "必要に応じて休憩を取るか、退勤を促してください。"
+        elif warning_type == "long_break":
+            title = "☕ 長時間休憩の警告"
+            message = f"<@{user_id}> さんが {duration_str} 以上休憩中です。"
+            action_text = "休憩終了の処理を忘れていないか確認してください。"
+        else:
+            title = "⚠️ 自動警告"
+            message = f"<@{user_id}> さんの勤怠状況に注意が必要です。"
+            action_text = "確認をお願いします。"
+        
+        return [
+            {
+                "type": "divider"
+            },
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": title,
+                    "emoji": True
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": message
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": action_text
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"現在の時刻: {MessageBuilder.format_time(datetime.now())}"
+                    }
+                ]
+            },
+            {
+                "type": "divider"
+            }
+        ]
+    

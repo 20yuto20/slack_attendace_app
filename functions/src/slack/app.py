@@ -9,6 +9,7 @@ import os
 from src.services.attendance_service import AttendanceService
 from src.services.monthly_summary_service import MonthlySummaryService
 from src.services.status_service import StatusService
+from src.services.warning_service import WarningService
 from src.slack.commands.attendance_commands import AttendanceCommands
 from src.slack.commands.summary_commands import SummaryCommands
 from src.slack.commands.status_commands import StatusCommands
@@ -33,6 +34,7 @@ def create_slack_bot_function(request: Request) -> Response:
         attendance_service = AttendanceService(firebase_repo)
         monthly_summary_service = MonthlySummaryService(firebase_repo)
         status_service = StatusService(firebase_repo)
+        warning_service = WarningService(firebase_repo)
         
         # Setup OAuth with Firestore-based stores
         # OAuthSettingsでinstall_path, redirect_uri_path, success_url, failure_urlを指定済み
