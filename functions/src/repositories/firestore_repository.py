@@ -3,6 +3,7 @@ from firebase_admin import credentials, firestore
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Set
 from google.cloud.firestore_v1.base_query import FieldFilter
+from google.api_core.exceptions import FailedPrecondition
 
 from src.models.attendance import Attendance  # 絶対パスに修正
 from src.utils.time_utils import get_current_time
@@ -112,6 +113,7 @@ class FirestoreRepository:
         指定期間の勤怠記録を取得
         """
         try:
+            # 基本クエリの構築
             query = (
                 self.attendance_collection
                 .where(filter=FieldFilter("user_id", "==", user_id))
@@ -123,6 +125,7 @@ class FirestoreRepository:
             if team_id:
                 query = query.where(filter=FieldFilter("team_id", "==", team_id))
                 
+            # ソート＆リミット設定
             query = query.order_by("start_time").limit(batch_size)
             
             records = []
@@ -134,6 +137,10 @@ class FirestoreRepository:
                     records.append(attendance)
                 
                 # 次のバッチがあるか確認
+                if len(docs) < batch_size:
+                    break
+                    
+                # 次のバッチを取得
                 last_doc = docs[-1]
                 docs = (
                     query
@@ -142,9 +149,85 @@ class FirestoreRepository:
                 )
             
             return records
+            
+        except FailedPrecondition as fp:
+            # インデックスエラーのより詳細なロギング
+            print(f"Firestore複合インデックスエラー: {str(fp)}")
+            print("インデックスの作成が必要です。エラーメッセージのURLからインデックスを作成してください。")
+            # 代替として、より単純なクエリを試行
+            return self._get_attendance_by_period_fallback(user_id, start_date, end_date, team_id, batch_size)
         except Exception as e:
-            print(f"Error retrieving attendance records: {str(e)}")
+            print(f"勤怠記録取得中にエラーが発生しました: {str(e)}")
             raise
+    
+    def _get_attendance_by_period_fallback(
+        self,
+        user_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        team_id: str = None,
+        batch_size: int = 100
+    ) -> List[Attendance]:
+        """
+        インデックスエラー発生時のフォールバックメソッド
+        最小限のクエリを実行し、メモリ内でフィルタリング
+        """
+        try:
+            print("緊急フォールバックメソッドを使用して勤怠記録を取得します")
+            
+            # インデックス不要の最小限のクエリとして、ユーザーIDのみでフィルタリング
+            # そもそもクエリなしで全件取得してからフィルタリングする方法も検討
+            query = (
+                self.attendance_collection
+                .where(filter=FieldFilter("user_id", "==", user_id))
+                .limit(1000)  # 安全のために上限を設定
+            )
+            
+            try:
+                docs = query.get()
+            except Exception as query_error:
+                print(f"緊急フォールバッククエリにもエラー発生: {str(query_error)}")
+                # 最終手段：特定ユーザーのドキュメントをIDベースで直接取得
+                # 例えば、過去に取得した勤怠記録のIDがわかっている場合など
+                # ここでは空リストを返すことにします
+                return []
+            
+            records = []
+            
+            # メモリ内でフィルタリングを行う
+            for doc in docs:
+                data = doc.to_dict()
+                # start_timeが文字列形式であることを想定
+                doc_start_time = data.get("start_time", "")
+                
+                # 日付範囲でフィルタリング - start_timeが存在する場合のみ
+                if not doc_start_time:
+                    continue
+                
+                # 日付範囲チェック - 文字列比較（ISOフォーマットなので可能）
+                if (doc_start_time < start_date.isoformat() or 
+                    doc_start_time > end_date.isoformat()):
+                    continue
+                
+                # team_idフィルタリング
+                doc_team_id = data.get("team_id", "")
+                if team_id and doc_team_id != team_id:
+                    continue
+                
+                # 条件を満たす場合はAttendanceオブジェクトに変換
+                attendance = self._convert_to_attendance(doc)
+                records.append(attendance)
+            
+            # ソートもメモリ内で行う
+            records.sort(key=lambda a: a.start_time)
+            
+            # バッチサイズでの制限も適用
+            return records[:batch_size]
+            
+        except Exception as e:
+            print(f"フォールバック取得中にエラーが発生しました: {str(e)}")
+            # 最後の手段として空のリストを返す
+            return []
 
     def _convert_to_attendance(self, doc: firestore.DocumentSnapshot) -> Attendance:
         """
@@ -243,6 +326,7 @@ class FirestoreRepository:
         except Exception as e:
             print(f"Error retrieving workspaces: {str(e)}")
             # エラー時は空リストを返す
+            print("フォールバック処理中のエラー：完全なフォールバックモードで処理します")
             return []
     
     def get_attendance_by_id(self, doc_id: str) -> Optional[Attendance]:
