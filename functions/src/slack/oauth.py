@@ -14,7 +14,6 @@ def setup_oauth_flow(client_id: str, client_secret: str, db: firestore.Client):
     state_store = FirestoreStateStore(db)
 
     # スコープ設定
-    # 'bot'スコープを削除し、'files:write:user'を使用
     BOT_SCOPES = [
         "chat:write",
         "commands",
@@ -29,7 +28,20 @@ def setup_oauth_flow(client_id: str, client_secret: str, db: firestore.Client):
         "users.profile:write"
     ]
     
-    base_url = os.getenv("SLACK_APP_BASE_URL", "https://slack-bot-function-2vwbe2ah2q-uc.a.run.app")
+    # より堅牢なベースURL取得方法
+    request_url = os.getenv("FUNCTION_URL")
+    project_id = os.getenv("GCP_PROJECT", "slack-attendance-bot-4a3a5")
+    region = os.getenv("FUNCTION_REGION", "us-central1")
+    
+    # 優先順位: 1. SLACK_APP_BASE_URL、2. FUNCTION_URL、3. 構築URL
+    base_url = os.getenv("SLACK_APP_BASE_URL")
+    if not base_url:
+        if request_url:
+            base_url = request_url
+        else:
+            base_url = f"https://{region}-{project_id}.cloudfunctions.net"
+    
+    print(f"Using base_url: {base_url} for Slack OAuth")
     
     oauth_settings = OAuthSettings(
         client_id=client_id,
