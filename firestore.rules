@@ -15,21 +15,21 @@ service cloud.firestore {
     match /slack_installations/{installationId} {
       // Cloud Functions からのみアクセス可能
       allow read, write: if request.auth.token.firebase.sign_in_provider == 'google.com'
-        && request.auth.token.firebase.sign_in_provider == 'service_account';
+        || request.auth.token.firebase.sign_in_provider == 'service_account';
     }
 
     // Slackボット情報のルール
     match /slack_bots/{botId} {
       // Cloud Functions からのみアクセス可能
       allow read, write: if request.auth.token.firebase.sign_in_provider == 'google.com'
-        && request.auth.token.firebase.sign_in_provider == 'service_account';
+        || request.auth.token.firebase.sign_in_provider == 'service_account';
     }
 
     // OAuth状態管理のルール
     match /slack_oauth_states/{stateId} {
       // Cloud Functions からのみアクセス可能
       allow read, write: if request.auth.token.firebase.sign_in_provider == 'google.com'
-        && request.auth.token.firebase.sign_in_provider == 'service_account';
+        || request.auth.token.firebase.sign_in_provider == 'service_account';
     }
 
     // デフォルトルール
