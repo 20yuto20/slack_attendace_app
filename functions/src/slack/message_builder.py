@@ -392,7 +392,7 @@ class MessageBuilder:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*<@{status['user_id']}>* {status_emoji} {status_text}\n"
+                    "text": f"*{status['user_name']}* {status_emoji} {status_text}\n"
                            f"• *勤務開始:* {MessageBuilder.format_time(status['start_time'])}\n"
                            f"• *経過時間:* {working_time}\n"
                            f"{break_info}"

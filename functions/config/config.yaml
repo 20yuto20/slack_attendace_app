@@ -14,7 +14,7 @@ application:
   timezone: "Asia/Tokyo"
   
 attendance_alerts:
-  enabled: true
-  long_work_warning_minutes: 5  # 8時間以上勤務でアラート
-  long_break_warning_minutes: 5  # 1時間以上休憩でアラート
+  enabled: False
+  long_work_warning_minutes: 480  # 8時間以上勤務でアラート
+  long_break_warning_minutes: 120  # 1時間以上休憩でアラート
   check_interval_minutes: 30     # 30分ごとにチェック
