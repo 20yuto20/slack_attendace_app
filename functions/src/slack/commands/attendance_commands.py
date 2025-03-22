@@ -110,7 +110,21 @@ class AttendanceCommands:
                             "text": "本日の業務報告",
                             "emoji": True
                         }
-                    },
+                    }
+                ]
+
+                # メンションがある場合、最初のブロックとして追加
+                if mention_text:
+                    report_blocks.append({
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"報告対象者：{mention_text}"
+                        }
+                    })
+
+                # 残りのブロックを追加
+                report_blocks.extend([
                     {
                         "type": "section",
                         "fields": [
@@ -145,7 +159,7 @@ class AttendanceCommands:
                             }
                         ]
                     }
-                ]
+                ])
 
                 # 投稿するテキスト（fallback用）
                 fallback_text = (
@@ -319,7 +333,7 @@ class AttendanceCommands:
                     "optional": True,
                     "label": {
                         "type": "plain_text",
-                        "text": "メンションするユーザー（任意）"
+                        "text": "メンションするユーザー"
                     },
                     "element": {
                         "type": "multi_users_select",
